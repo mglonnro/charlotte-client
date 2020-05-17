@@ -6,8 +6,14 @@
 #include <wsclient/wsclient.h>
 #include "wsclient.h"
 
+//#define WS_SERVER "ws://192.168.8.101:3100"
+#define WS_SERVER "wss://community.nakedsailor.blog/timescaledb"
+
+wsclient *ws_client;
+
 int onclose(wsclient *c) {
 	fprintf(stderr, "onclose called: %d\n", c->sockfd);
+	ws_client = NULL;
 	return 0;
 }
 
@@ -27,13 +33,9 @@ int onmessage(wsclient *c, wsclient_message *msg) {
 
 int onopen(wsclient *c) {
 	fprintf(stderr, "onopen called: %d\n", c->sockfd);
-	libwsclient_send(c, "Hello onopen");
+	//libwsclient_send(c, "Hello onopen");
 	return 0;
 }
-
-#define WS_SERVER "ws://localhost:3100"
-
-wsclient *ws_client;
 
 int init_ws_client(char *boat_id) {
 
@@ -59,7 +61,7 @@ int init_ws_client(char *boat_id) {
 	//bind helper UNIX socket to "test.sock"
 	//One can then use netcat (nc) to send data to the websocket server end on behalf of the client, like so:
 	// $> echo -n "some data that will be echoed by echo.websocket.org" | nc -U test.sock
-	//libwsclient_helper_socket(client, "test2.sock");
+	//libwsclient_helper_socket(client, "test.sock");
 	//starts run thread.
 	libwsclient_run(client);
 	//blocks until run thread for client is done.
@@ -71,7 +73,12 @@ int init_ws_client(char *boat_id) {
 }
 
 int ws_send(char *message) {
-	libwsclient_send(ws_client, message);
+	if (ws_client) {
+		libwsclient_send(ws_client, message);
+		return 1;
+	} else {
+		return 0;
+	}
 }
 
 int finish_ws_client() {
