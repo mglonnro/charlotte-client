@@ -4,6 +4,7 @@ TARGET=charlotte-client
 TARGETS=$(TARGET)
 OBJS=charlotte-client.o nmea_parser.o cJSON.o wsclient.o
 LDFLAGS=-lcurl -lwsclient
+CFLAGS=-g
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
@@ -24,9 +25,14 @@ wsclient.o:	wsclient.c
 clean:
 	-rm -f $(TARGETS) $(OBJS) *.elf *.gdb
 
+VER=0.0.2
+PKGFILE=charlotte-client-$(VER).tar.gz
 LIBS=/usr/local/lib/libwsclient.so.0.0.0 /usr/local/lib/libwsclient.la /usr/local/lib/libcurl.so.4.6.0 /usr/local/lib/libcurl.la
 pkg:
 	mkdir -p package/charlotte-client/lib
-	cp install.sh start.sh charlotte-client actisense-serial analyzer package/charlotte-client		
+	cp config.template install.sh start.sh stop.sh charlotte-client actisense-serial analyzer package/charlotte-client		
 	cp $(LIBS) package/charlotte-client/lib
+	rm -f package/$(PKGFILE)
+	cd package && tar zcvf $(PKGFILE) charlotte-client/*
+
 
