@@ -87,9 +87,6 @@ int
 parse_nmea(char *line, char *message)
 {
 	cJSON          *json = cJSON_Parse(line);
-
-	//printf("JSON: %s\n", cJSON_Print(json));
-
 	cJSON          *pgn = cJSON_GetObjectItemCaseSensitive(json, "pgn");
 
 	struct nmea_state newstate;
@@ -228,9 +225,10 @@ cJSON *build_diff(struct nmea_state *old_state, struct nmea_state *new_state, st
 	if (changes) {
 	  //printf("JSON: %s\n", cJSON_Print(ret));
 	  return ret;
-	}
-
-	return NULL;
+	} else {
+	  cJSON_Delete(ret);
+	  return NULL;
+	}	
 }
 
 int diff_claim_values(cJSON *root, struct claim *old_arr, struct claim *new_arr, char *fieldname) {
@@ -259,6 +257,8 @@ int diff_claim_values(cJSON *root, struct claim *old_arr, struct claim *new_arr,
 
   if (diff) {
       cJSON_AddItemToObject(root, fieldname, src);
+  } else {
+      cJSON_Delete(src);
   }
 
   return diff;
@@ -299,6 +299,8 @@ int diff_device_values(cJSON *root, struct device *old_arr, struct device *new_a
 
   if (diff) {
       cJSON_AddItemToObject(root, fieldname, src);
+  } else {
+     cJSON_Delete(src);
   }
 
   return diff;
@@ -328,6 +330,8 @@ int diff_values(cJSON *root, struct nmea_value *old_arr, struct nmea_value *new_
 
   if (diff) {
       cJSON_AddItemToObject(root, fieldname, src);
+  } else {
+      cJSON_Delete(src);
   }
 
   return diff;
@@ -349,6 +353,7 @@ get_field_value_string(cJSON * json, char *fieldname)
 int 
 get_src(cJSON *json) {
 	  cJSON          *src = cJSON_GetObjectItemCaseSensitive(json, "src");
+
 	return src->valueint;
 }
 
