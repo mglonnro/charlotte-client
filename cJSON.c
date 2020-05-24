@@ -1188,6 +1188,7 @@ static unsigned char *print(const cJSON * const item, cJSON_bool format, const i
 
     /* create buffer */
     buffer->buffer = (unsigned char*) hooks->allocate(default_buffer_size);
+    memset(buffer->buffer, 0, default_buffer_size);
     buffer->length = default_buffer_size;
     buffer->format = format;
     buffer->hooks = *hooks;
@@ -1219,6 +1220,7 @@ static unsigned char *print(const cJSON * const item, cJSON_bool format, const i
         {
             goto fail;
         }
+	memset(printed, 0, buffer->offset + 1);
         memcpy(printed, buffer->buffer, cjson_min(buffer->length, buffer->offset + 1));
         printed[buffer->offset] = '\0'; /* just to be sure */
 

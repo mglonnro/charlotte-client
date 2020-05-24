@@ -13,6 +13,7 @@ wsclient *ws_client;
 
 int onclose(wsclient *c) {
 	fprintf(stderr, "onclose called: %d\n", c->sockfd);
+	libwsclient_finish(ws_client);
 	ws_client = NULL;
 	return 0;
 }
@@ -40,6 +41,7 @@ int onopen(wsclient *c) {
 int init_ws_client(char *boat_id) {
 
 	char url[256];
+ 	memset(url, 0, 256);
 	sprintf(url, "%s/boat/%s/data", WS_SERVER, boat_id);
 
         printf("init ws %s\n", url);

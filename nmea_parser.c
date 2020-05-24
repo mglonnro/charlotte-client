@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "cJSON.h"
 
 struct nmea_value {
@@ -59,6 +60,7 @@ int diff_values(cJSON *root, struct nmea_value *old_arr, struct nmea_value *new_
 void 		trim_message(char *m);
 int	 	get_unique_number(int src, struct claim_state *c, char *unique_number);
 int		save_state(struct claim_state *c);
+int	 get_ais_user_id(cJSON *json);
 
 struct nmea_state state;
 
@@ -74,7 +76,9 @@ get_nmea_state(char *message) {
 
   cJSON *diff = build_diff(&newstate, &state, &c_newstate, &c_state);
         if (diff) {
-                sprintf(message, "%s", cJSON_Print(diff));
+		char *p = cJSON_Print(diff);
+                sprintf(message, "%s", p);
+		free(p);
                 trim_message(message);
                 cJSON_Delete(diff);
                 return 1;
@@ -88,6 +92,7 @@ parse_nmea(char *line, char *message)
 {
 	cJSON          *json = cJSON_Parse(line);
 	cJSON          *pgn = cJSON_GetObjectItemCaseSensitive(json, "pgn");
+	cJSON	       *ais = NULL;
 
 	struct nmea_state newstate;
 	memcpy(&newstate, &state, sizeof(state));
@@ -167,10 +172,34 @@ parse_nmea(char *line, char *message)
                 }
 
 		save_state(&c_newstate);
-
-	}
+	} 
 
 	cJSON *diff = build_diff(&state, &newstate, &c_state, &c_newstate);
+	
+	  if (pgn->valueint == 129038 || pgn->valueint == 129039 || pgn->valueint == 129794) {
+	  if (!diff) {
+	    diff = cJSON_CreateObject();
+	  }
+                cJSON *values = cJSON_GetObjectItemCaseSensitive(json, "fields");
+                int user_id = get_ais_user_id(json);
+
+                if (user_id == -1) {
+                        printf("ERROR!");
+                        exit(1);
+                }
+
+                printf("Line: %s\n", line);
+                printf("AIS user_id %d\n", user_id);
+
+                char key[256];
+                memset(key, 0, 256);
+                sprintf(key, "%d", user_id);
+
+		ais = cJSON_CreateObject();
+                cJSON_AddItemToObject(ais, key, cJSON_Parse(cJSON_Print(values)));
+		cJSON_AddItemToObject(diff, "ais", ais);
+                printf("Done adding\n");
+        }
 
 	memcpy(&state, &newstate, sizeof(newstate));
 	memcpy(&c_state, &c_newstate, sizeof(c_newstate));
@@ -178,9 +207,15 @@ parse_nmea(char *line, char *message)
 	cJSON_Delete(json);
 
 	if (diff) {
-		sprintf(message, "%s", cJSON_Print(diff));
+		char *p = cJSON_Print(diff);
+		sprintf(message, "%s", p);
+		free(p);
 		trim_message(message);
 		cJSON_Delete(diff);
+
+		if (ais) {
+			ais = NULL;
+		}
 		return 1;
 	} else {
 		return 0;
@@ -322,6 +357,7 @@ int diff_values(cJSON *root, struct nmea_value *old_arr, struct nmea_value *new_
 
     if (!found) {
       char key[10];
+      memset(key, 0, 10);
       sprintf(key, "%d", new_arr[n].src);
       cJSON_AddNumberToObject(src, key, new_arr[n].value);
       diff = 1;
@@ -355,6 +391,24 @@ get_src(cJSON *json) {
 	  cJSON          *src = cJSON_GetObjectItemCaseSensitive(json, "src");
 
 	return src->valueint;
+}
+
+int
+get_ais_user_id(cJSON *json) {
+
+        printf("get_ais_user_id\n");
+
+	cJSON          *fields = cJSON_GetObjectItemCaseSensitive(json, "fields");
+	cJSON	*v = cJSON_GetObjectItemCaseSensitive(fields, "User ID");
+
+	
+ 	printf("Here\n");
+	if (v) {
+	  return v->valueint;
+	}
+	
+	printf("Dork\n");
+	return -1;
 }
 
 int 
@@ -461,6 +515,41 @@ update_nmea_device(cJSON * json, char *unique_number, struct device *arr)
         }       
         return 0;
 }
+
+int
+nmea_ais_value(cJSON *json) 
+{
+	cJSON          *fields = cJSON_GetObjectItemCaseSensitive(json, "fields");
+	cJSON          *user_id = cJSON_GetObjectItemCaseSensitive(fields, "User ID");
+
+        cJSON *ret = cJSON_CreateObject();
+
+	const char * fs_string[] = {
+		"Type of ship",
+		"Destination",	
+		"Name"
+		"IMO Number",
+		"Callsign"
+	};
+
+	const char * fs_double[] = {
+		"Latitude", 
+		"Longitude",
+		"SOG",
+		"COG",
+		"Length",
+		"Beam",
+		"Draft", 
+		"Position reference from Starboard",
+		"Position reference from Bow"
+	};
+			
+	for (int x = 0; x < sizeof(fs_string); x++) {
+		
+	}
+  		
+}
+	
 
 int 
 update_nmea_value(cJSON * json, struct nmea_value *arr, char *fieldname)

@@ -15,6 +15,9 @@ main(int argc, char **argv)
   long now;
   
 
+  memset(&str, 0, BUFSIZE);
+  memset(&message, 0, BUFSIZE);
+
   strcpy(boat_id, argv[1]);
 
   init_ws_client(boat_id);
@@ -22,7 +25,7 @@ main(int argc, char **argv)
 
   time(&last_sync_state);
 
-  while (fgets(str, sizeof str, stdin) != NULL) {
+  while (fgets(str, BUFSIZE, stdin) != NULL) {
 
     int hasdiff = parse_nmea(str, message);
     if (hasdiff) {
@@ -37,7 +40,7 @@ main(int argc, char **argv)
 	  time(&last_init);
 	  init_ws_client(boat_id);
         }  
-      } 
+      }
     }
 
     time(&now);
