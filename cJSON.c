@@ -192,11 +192,12 @@ static unsigned char* cJSON_strdup(const unsigned char* string, const internal_h
     }
 
     length = strlen((const char*)string) + sizeof("");
-    copy = (unsigned char*)hooks->allocate(length);
+    copy = hooks->allocate(length);
     if (copy == NULL)
     {
         return NULL;
     }
+    memset(copy, 0, length);
     memcpy(copy, string, length);
 
     return copy;
@@ -486,6 +487,8 @@ static unsigned char* ensure(printbuffer * const p, size_t needed)
     {
         /* reallocate with realloc if available */
         newbuffer = (unsigned char*)p->hooks.reallocate(p->buffer, newsize);
+	memset(newbuffer + p->offset + 1, 0, newsize - p->offset - 1);
+
         if (newbuffer == NULL)
         {
             p->hooks.deallocate(p->buffer);

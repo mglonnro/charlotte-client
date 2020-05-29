@@ -1,6 +1,10 @@
 #include <stdio.h>
+#include <string.h>
 #include <strings.h>
+#include <stdlib.h>
+#include <time.h>
 #include "wsclient.h"
+#include "nmea_parser.h"
 
 #define BUFSIZE 4096
 #define FULL_SYNC_INTERVAL 10
@@ -14,6 +18,10 @@ main(int argc, char **argv)
   long last_init = 0, last_sync_state;
   long now;
   
+  if (argc != 2) {
+    fprintf(stderr, "usage: %s <boatId>\n", argv[0]);
+    exit(1);
+  }
 
   memset(&str, 0, BUFSIZE);
   memset(&message, 0, BUFSIZE);
@@ -25,7 +33,14 @@ main(int argc, char **argv)
 
   time(&last_sync_state);
 
+  int counter = 0;
+
   while (fgets(str, BUFSIZE, stdin) != NULL) {
+    counter ++;
+
+    /*if (counter == 100) {
+      exit(0);
+    }*/
 
     int hasdiff = parse_nmea(str, message);
     if (hasdiff) {
@@ -34,13 +49,12 @@ main(int argc, char **argv)
       if (!ws_send(message)) {
 	time(&now);
 
-        printf("time elapsed since last init: %ld\n", (now-last_init));	
         if ((now-last_init)>= RETRY_INTERVAL) {
 	  printf("Trying to init new connection!");
 	  time(&last_init);
 	  init_ws_client(boat_id);
         }  
-      }
+      } 
     }
 
     time(&now);

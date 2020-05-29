@@ -2,69 +2,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include "cJSON.h"
-
-struct nmea_value {
-	float		value;
-	int		src;
-};
-
-#define MAXSOURCES	5
-
-struct nmea_state {
-	struct nmea_value heading[MAXSOURCES];
-	struct nmea_value variation[MAXSOURCES];
-	struct nmea_value trueheading[MAXSOURCES];
-	struct nmea_value sog[MAXSOURCES];
-	struct nmea_value cog[MAXSOURCES];
-	struct nmea_value aws[MAXSOURCES];
-	struct nmea_value awa[MAXSOURCES];
-	struct nmea_value lng[MAXSOURCES];
-	struct nmea_value lat[MAXSOURCES];
-	struct nmea_value speed[MAXSOURCES];
-	struct nmea_value depth[MAXSOURCES];
-	struct nmea_value pitch[MAXSOURCES];
-	struct nmea_value roll[MAXSOURCES];
-};
-
-#define DLENGTH	256
-
-struct claim {
-	int	src;
-	char	unique_number[DLENGTH];
-};
-
-
-struct device {
-	int	isactive;
-	char 	unique_number[DLENGTH];
-	char 	model_id[DLENGTH];
-	char	model_version[DLENGTH];
-	char	software_version_code[DLENGTH];
-	char	model_serial_code[DLENGTH];
-};
-
-#define MAXDEVICES	200
-#define MAXCLAIMS	200
-
-struct claim_state {
-	struct device	devices[MAXDEVICES];	
-	struct claim	claims[MAXCLAIMS];
-};
-
-
-int		update_nmea_value(cJSON * json, struct nmea_value *arr, char *fieldname);
-void		insert_or_replace(struct nmea_value *arr, int src, float value);
-char           * get_field_value_string(cJSON * json, char *fieldname);
-cJSON 		*build_diff(struct nmea_state *old_state, struct nmea_state *new_state, struct claim_state *c_old_state, struct claim_state *c_new_state);
-int diff_values(cJSON *root, struct nmea_value *old_arr, struct nmea_value *new_arr, char *fieldname);
-void 		trim_message(char *m);
-int	 	get_unique_number(int src, struct claim_state *c, char *unique_number);
-int		save_state(struct claim_state *c);
-int	 get_ais_user_id(cJSON *json);
+#include "nmea_parser.h"
 
 struct nmea_state state;
-
-
 struct claim_state c_state;
 
 int
@@ -188,17 +128,22 @@ parse_nmea(char *line, char *message)
                         exit(1);
                 }
 
-                printf("Line: %s\n", line);
-                printf("AIS user_id %d\n", user_id);
-
                 char key[256];
                 memset(key, 0, 256);
                 sprintf(key, "%d", user_id);
 
 		ais = cJSON_CreateObject();
-                cJSON_AddItemToObject(ais, key, cJSON_Parse(cJSON_Print(values)));
+
+		char *v = cJSON_Print(values);
+		cJSON *aisvalues = cJSON_Parse(v);
+	
+		if (aisvalues) {
+                	cJSON_AddItemToObject(ais, key, aisvalues);
+		}
+
+		free(v);
+
 		cJSON_AddItemToObject(diff, "ais", ais);
-                printf("Done adding\n");
         }
 
 	memcpy(&state, &newstate, sizeof(newstate));
@@ -312,11 +257,6 @@ int diff_device_values(cJSON *root, struct device *old_arr, struct device *new_a
       }
     }
 
-	 char    model_id[DLENGTH];
-        char    model_version[DLENGTH];
-        char    software_version_code[DLENGTH];
-        char    model_serial_code[DLENGTH];
-
     if (!found) {
       cJSON *v = cJSON_CreateObject();
       cJSON_AddStringToObject(v, "model_id", new_arr[n].model_id);
@@ -324,7 +264,8 @@ int diff_device_values(cJSON *root, struct device *old_arr, struct device *new_a
       cJSON_AddStringToObject(v, "software_version_code", new_arr[n].software_version_code);
       cJSON_AddStringToObject(v, "model_serial_code", new_arr[n].model_serial_code);
 
-      char key[10];
+      char key[256];
+      memset(key, 0, 256);
       sprintf(key, "%s", new_arr[n].unique_number);
       
       cJSON_AddItemToObject(src, key, v);
@@ -395,19 +336,13 @@ get_src(cJSON *json) {
 
 int
 get_ais_user_id(cJSON *json) {
-
-        printf("get_ais_user_id\n");
-
 	cJSON          *fields = cJSON_GetObjectItemCaseSensitive(json, "fields");
 	cJSON	*v = cJSON_GetObjectItemCaseSensitive(fields, "User ID");
-
 	
- 	printf("Here\n");
 	if (v) {
 	  return v->valueint;
 	}
 	
-	printf("Dork\n");
 	return -1;
 }
 
@@ -465,7 +400,6 @@ int
 update_nmea_device(cJSON * json, char *unique_number, struct device *arr)
 {
         cJSON          *fields = cJSON_GetObjectItemCaseSensitive(json, "fields");
-        cJSON          *src_json = cJSON_GetObjectItemCaseSensitive(json, "src");
 
         if (fields) {
                 cJSON          *model_id = cJSON_GetObjectItemCaseSensitive(fields, "Model ID");
@@ -474,8 +408,6 @@ update_nmea_device(cJSON * json, char *unique_number, struct device *arr)
                 cJSON          *model_serial_code = cJSON_GetObjectItemCaseSensitive(fields, "Model Serial Code");
 
                 if (model_id) {
-                        int src = src_json->valueint;
-
                         // Delete old value if any, return if already exists
                         for (int x = 0; x < MAXDEVICES; x++) {
                                 if (arr[x].isactive && !strcmp(arr[x].unique_number, unique_number)) {
@@ -516,6 +448,7 @@ update_nmea_device(cJSON * json, char *unique_number, struct device *arr)
         return 0;
 }
 
+/*
 int
 nmea_ais_value(cJSON *json) 
 {
@@ -549,6 +482,7 @@ nmea_ais_value(cJSON *json)
 	}
   		
 }
+*/
 	
 
 int 
@@ -574,7 +508,6 @@ update_nmea_value(cJSON * json, struct nmea_value *arr, char *fieldname)
 void 
 insert_or_replace(struct nmea_value *arr, int src, float value)
 {
-	int		found = 0;
 	int		x = 0;
 
 	for (x = 0; x < MAXSOURCES && arr[x].src != 0; x++) {
@@ -601,11 +534,13 @@ save_state(struct claim_state *c) {
     if (outfile == NULL) 
     { 
         fprintf(stderr, "\nError opening file claim.state for writing!\n"); 
+	return 0;
     } 
     else 
     { 
     	fwrite (c, sizeof(struct claim_state), 1, outfile); 
 	fclose(outfile);
+	return 1;
     }
 }
 
@@ -617,5 +552,7 @@ init_nmea_parser() {
 		fread(&c_state, sizeof(struct claim_state), 1, infile);
 		fclose(infile);
 	}
+
+        return 1;
 }
 
