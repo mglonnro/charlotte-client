@@ -31,7 +31,16 @@ int
 parse_nmea(char *line, char *message)
 {
 	cJSON          *json = cJSON_Parse(line);
+	if (json == NULL) {
+		cJSON_Delete(json);
+		return 0;
+	}
+
 	cJSON          *pgn = cJSON_GetObjectItemCaseSensitive(json, "pgn");
+	if (pgn == NULL) {
+		cJSON_Delete(json);
+		return 0;
+	}
 	cJSON	       *ais = NULL;
 
 	struct nmea_state newstate;
@@ -254,6 +263,7 @@ int diff_device_values(cJSON *root, struct device *old_arr, struct device *new_a
 	// TODO, check for changes in data
       if (!strcmp(new_arr[n].unique_number, old_arr[o].unique_number)) {
         found = 1;
+	break;
       }
     }
 

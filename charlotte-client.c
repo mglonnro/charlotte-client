@@ -3,12 +3,18 @@
 #include <strings.h>
 #include <stdlib.h>
 #include <time.h>
+#include <errno.h>
+
+#include <mqueue.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+
 #include "wsclient.h"
 #include "nmea_parser.h"
 
 #define BUFSIZE 4096
 #define FULL_SYNC_INTERVAL 10
-#define RETRY_INTERVAL	5
+#define RETRY_INTERVAL	2
 
 int
 main(int argc, char **argv)
@@ -33,7 +39,7 @@ main(int argc, char **argv)
 
   time(&last_sync_state);
 
-  int counter = 0;
+  int counter = 0, debug_counter = 0;
 
   while (fgets(str, BUFSIZE, stdin) != NULL) {
     counter ++;
@@ -42,15 +48,18 @@ main(int argc, char **argv)
       exit(0);
     }*/
 
+    memset(message, 0, BUFSIZE);
     int hasdiff = parse_nmea(str, message);
     if (hasdiff) {
       //printf("sending %s\n", message);
 
-      if (!ws_send(message)) {
+      if (!ws_send(message, BUFSIZE)) {
 	time(&now);
 
         if ((now-last_init)>= RETRY_INTERVAL) {
-	  printf("Trying to init new connection!");
+	  debug_counter ++;
+	  fprintf(stderr, "Trying to init new connection %d!\n", debug_counter);
+	  
 	  time(&last_init);
 	  init_ws_client(boat_id);
         }  
@@ -61,7 +70,7 @@ main(int argc, char **argv)
     if ( (now - last_sync_state) >= FULL_SYNC_INTERVAL) {
       if (get_nmea_state(message)) {
 	//printf("Sending full state: %s\n", message);
-	ws_send(message);
+	//ws_send(message);
       }
       time(&last_sync_state);
     }
