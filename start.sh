@@ -24,7 +24,8 @@ then
 fi
 
 echo "Starting client with serial device."
-(./actisense-serial -r $DEVICE | ./charlotte-logger logs --upload-to $BOATID --retry 60 | ./analyzer -json | ./charlotte-client $BOATID) > ./daemon.log 2>&1 &
+#(./actisense-serial -r $DEVICE | ./charlotte-logger logs --upload-to $BOATID --retry 60 | ./analyzer -json | ./charlotte-client $BOATID) 
+(./actisense-serial -r $DEVICE | ./charlotte-logger logs --upload-to $BOATID --retry 60 | ./analyzer -json | ./charlotte-client $BOATID) > ./daemon-`date +%y-%m-%d_%H:%M:%S`.log 2>&1 &
 
 #echo "Starting client with wifi device."
 #(nc -kul 1457 | ./analyzer -json | ./charlotte-client $BOATID) > ./daemon.log 2>&1 &

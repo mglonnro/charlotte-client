@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <mqueue.h>
 #include <fcntl.h>
+#include <signal.h>
 
 #include <wsclient/wsclient.h>
 #include "wsclient.h"
@@ -50,7 +51,6 @@ int onopen(wsclient *c) {
 mqd_t consumer;
 
 int init_ws_client(char *boat_id) {
-
 	char url[256];
  	memset(url, 0, 256);
 	sprintf(url, "%s/boat/%s/data", WS_SERVER, boat_id);

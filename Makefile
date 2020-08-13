@@ -4,7 +4,8 @@ TARGET=charlotte-client
 TARGETS=$(TARGET)
 OBJS=charlotte-client.o nmea_parser.o cJSON.o wsclient.o
 LDFLAGS=-lcurl -lwsclient -lrt
-CFLAGS=-g -Wall
+VER=0.0.10
+CFLAGS=-g -Wall -DVERSION=\"$(VER)\"
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
@@ -25,7 +26,6 @@ wsclient.o:	wsclient.c
 clean:
 	-rm -f $(TARGETS) $(OBJS) *.elf *.gdb
 
-VER=0.0.6
 PKGFILE=charlotte-client-$(VER).tar.gz
 LIBS=/usr/local/lib/libwsclient.so.0.0.0 /usr/local/lib/libwsclient.la /usr/local/lib/libcurl.so.4.6.0 /usr/local/lib/libcurl.la
 pkg:

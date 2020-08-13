@@ -8,6 +8,7 @@
 #include <mqueue.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <signal.h>
 
 #include "wsclient.h"
 #include "nmea_parser.h"
@@ -28,6 +29,10 @@ main(int argc, char **argv)
     fprintf(stderr, "usage: %s <boatId>\n", argv[0]);
     exit(1);
   }
+
+  fprintf(stderr, "charlotte-client v%s\n", VERSION);
+
+  signal(SIGPIPE, SIG_IGN);
 
   memset(&str, 0, BUFSIZE);
   memset(&message, 0, BUFSIZE);
@@ -51,7 +56,7 @@ main(int argc, char **argv)
     memset(message, 0, BUFSIZE);
     int hasdiff = parse_nmea(str, message);
     if (hasdiff) {
-      //printf("sending %s\n", message);
+      // printf("sending %s\n", message);
 
       if (!ws_send(message, BUFSIZE)) {
 	time(&now);
