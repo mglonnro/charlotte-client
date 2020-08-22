@@ -54,11 +54,13 @@ struct vhd_minimal_client
     int *port;
 };
 
+#define BOAT_ID_SIZE	50
+
 static struct lws_context *context;
 static int interrupted, port = 443, ssl_connection = LCCSCF_USE_SSL;
 static const char *server_address = "community.nakedsailor.blog", *pro =
     "charlotte-data";
-static const char *boat_id = "2zGrCQC2X9X2LbkzMhFm";
+static char boat_id[BOAT_ID_SIZE];
 
 
 /*
@@ -287,11 +289,13 @@ sigint_handler (int sig)
 
 
 int
-ws_init ()
+ws_init (char *id)
 {
     struct lws_context_creation_info info;
     const char *p;
     int n = 0;
+
+    strcpy (boat_id, id);
 
     signal (SIGINT, sigint_handler);
     memset (&info, 0, sizeof info);

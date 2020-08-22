@@ -33,7 +33,7 @@ main (int argc, char **argv)
       }
     fprintf (stderr, "charlotte-client v%s\n", VERSION);
 
-    ws_init ();
+    ws_init (argv[1]);
 
     signal (SIGPIPE, SIG_IGN);
 
