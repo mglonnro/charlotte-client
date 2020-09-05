@@ -3,13 +3,14 @@ TARGETDIR=.
 TARGET=charlotte-client
 TARGETS=$(TARGET)
 OBJS=charlotte-client.o nmea_parser.o cJSON.o ws.o
-LDFLAGS=-lcurl -lwebsockets
-VER=0.0.10
+STATICLIBS=/usr/local/lib/libwebsockets.a /usr/local/lib/libcurl.a
+LDFLAGS=-lssl -lcrypto
+VER=0.0.11
 CFLAGS=-g -Wall -DVERSION=\"$(VER)\"
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $(TARGET) $(OBJS) $(LDLIBS$(LDLIBS-$(@)))
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(STATIC) $(LDFLAGS) -o $(TARGET) $(OBJS) $(STATICLIBS)
 
 charlotte-client.o:	charlotte-client.c
 			indent -i4 charlotte-client.c
@@ -29,14 +30,12 @@ ws.o:	ws.c
 clean:
 	-rm -f $(TARGETS) $(OBJS) *.elf *.gdb
 
-PKGFILE=charlotte-client-$(VER).tar.gz
-LIBS=/usr/local/lib/libwsclient.so.0.0.0 /usr/local/lib/libwsclient.la /usr/local/lib/libcurl.so.4.6.0 /usr/local/lib/libcurl.la
+PKGFILE=charlotte-client-$(VER).zip
 pkg:
-	mkdir -p package/charlotte-client/lib
+	strip charlotte-client charlotte-logger
 	cp config.template install.sh start.sh stop.sh charlotte-client charlotte-logger actisense-serial analyzer package/charlotte-client		
-	cp $(LIBS) package/charlotte-client/lib
 	rm -f package/$(PKGFILE)
-	cd package && tar zcvf $(PKGFILE) charlotte-client/* 
+	cd package && zip -r $(PKGFILE) charlotte-client/* 
 	cp package/$(PKGFILE) /tmp
 
 

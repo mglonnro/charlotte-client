@@ -1,12 +1,18 @@
 #!/bin/bash
 
+VER=0.0.2
+echo "Charlotte Client v$VER"
+
+if ! test -e config 
+then
+  echo "Please run ./install.sh before starting."
+  exit 1
+fi
+
 BOATID=`grep BOATID config|cut -d'=' -f2`
 WIFICMD=`grep WIFICMD config|cut -d'=' -f2`
 DEVICE=`ls /dev/serial/by-id/*NMEA*`
 LOGDIR=logs
-VER=0.0.2
-
-echo "Charlotte Client v$VER"
 if grep -q "replace" config
 then
   echo "Please update your config file before starting!"

@@ -1,6 +1,6 @@
 The charlotte-client is (C) Humeko Oy, Mikael Lönnroth 2020
 
-The charlotte-client binary distribution is bundle that contains
+The charlotte-client binary distribution is a bundle that contains
 the following binaries with their separate licenses: 
 
 ==> analyzer
@@ -40,7 +40,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 Except as contained in this notice, the name of a copyright holder shall not be used in advertising or otherwise to promote the sale, use or other dealings in this Software without prior written authorization of the copyright holder.
 
-==> libwsclient
-https://github.com/payden/libwsclient/blob/master/COPYING
-GNU GPLv3
+==> libwebsockets.org
+https://libwebsockets.org/
+MIT
 
