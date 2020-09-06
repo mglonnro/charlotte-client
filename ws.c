@@ -215,6 +215,10 @@ callback_minimal(struct lws *wsi, enum lws_callback_reasons reason,
 	break;
 
     case LWS_CALLBACK_CLIENT_CLOSED:
+	if (mco->ring) {
+	    lws_ring_destroy(mco->ring);
+	    mco->ring = NULL;
+	}
 	goto do_retry;
 
     default:
@@ -261,6 +265,7 @@ ws_init(char *id, uv_loop_t * loop)
     lwsl_user("LWS minimal ws client\n");
 
     info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+    info.options |= LWS_SERVER_OPTION_LIBUV;
     info.port = CONTEXT_PORT_NO_LISTEN;	/* we do not run any server */
     info.protocols = protocols;
     info.foreign_loops = (void *[]){
@@ -302,17 +307,29 @@ int
 ws_write(char *buf, int len)
 {
     if (debug_flag) {
+#ifdef CHAR_DEBUG
+	fprintf(stderr, "!1");
+	fflush(stderr);
+#endif
 	return 0;
     }
     struct my_conn *pss = (struct my_conn *)&mco;
     struct msg	    amsg;
 
     if (!pss->ring) {
-	ws_service();
+#ifdef CHAR_DEBUG
+	fprintf(stderr, "!2");
+	fflush(stderr);
+#endif
+	/* ws_service (); */
 	return 0;
     }
     int		    n = (int)lws_ring_get_count_free_elements(pss->ring);
     if (!n) {
+#ifdef CHAR_DEBUG
+	fprintf(stderr, "!3");
+	fflush(stderr);
+#endif
 	lwsl_user("dropping!\n");
 	return 0;
     }
@@ -335,9 +352,20 @@ ws_write(char *buf, int len)
 #endif
 
     if (!lws_ring_insert(pss->ring, &amsg, 1)) {
+#ifdef CHAR_DEBUG
+	fprintf(stderr, "X");
+	fflush(stderr);
+#endif
 	lwsl_user("dropping!\n");
 	__minimal_destroy_message(&amsg);
 	return 0;
+    }
+    /*
+     * If this is 0x0 we 'll get a seg fault. Happens when the connection is
+     * / has closed.
+     */
+    if (mco.ring) {
+	lws_callback_on_writable(mco.wsi);
     }
 #ifdef CHAR_DEBUG
     fprintf(stderr, "c");

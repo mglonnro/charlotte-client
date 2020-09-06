@@ -7,6 +7,8 @@
 struct nmea_state state;
 struct claim_state c_state;
 
+int		debug_count = 0;
+
 int
 get_nmea_state(char *message)
 {
@@ -34,13 +36,21 @@ parse_nmea(char *line, char *message)
     cJSON          *json = cJSON_Parse(line);
     if (json == NULL) {
 	cJSON_Delete(json);
-	fprintf(stderr, "Couldn't parse json\n");
+	fprintf(stderr, "Couldn't parse json '%s'\n", line);
+	debug_count++;
+	/*
+	 * if (debug_count == 3) { exit (1); }
+	 */
 	return 0;
     }
     cJSON          *pgn = cJSON_GetObjectItemCaseSensitive(json, "pgn");
     if (pgn == NULL) {
 	cJSON_Delete(json);
-	fprintf(stderr, "Couldn't parse json\n");
+	fprintf(stderr, "Couldn't parse json '%s'\n", line);
+	debug_count++;
+	/*
+	 * if (debug_count == 3) { exit (1); }
+	 */
 	return 0;
     }
     cJSON          *ais = NULL;

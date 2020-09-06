@@ -19,13 +19,68 @@
 #define RETRY_INTERVAL	2
 
 char           *buf_getline();
-int		addbuf     (char *buf);
+int		addbuf     (char *buf, int len);
 int		interrupted = 0;
+void		process_buffer();
+
+static uv_pipe_t stdin_pipe;
+
+#define BUFFER_SIZE	16384
+static char	buffer[BUFFER_SIZE + 1];	/* include space for null */
 
 void
 sigint_handler()
 {
     interrupted = 1;
+}
+
+void
+alloc_buffer(uv_handle_t * handle, size_t suggested_size, uv_buf_t * buf)
+{
+    *buf = uv_buf_init((char *)malloc(suggested_size), suggested_size);
+}
+
+void
+read_stdin(uv_stream_t * stream, ssize_t nread, const uv_buf_t * buf)
+{
+    if (nread < 0)
+      {
+	  if (nread == UV_EOF)
+	    {
+		// end of file
+		uv_close ((uv_handle_t *) & stdin_pipe, NULL);
+	    }
+      }
+    else if (nread > 0)
+      {
+	  addbuf (buf->base, nread);
+	  process_buffer ();
+      }
+
+    if (buf->base)
+	free (buf->base);
+}
+
+void
+process_buffer()
+{
+    char	    str    [BUFSIZE], message[BUFSIZE];
+    char           *line;
+
+    while ((line = buf_getline()) != NULL) {
+	strcpy(str, line);
+	memset(message, 0, BUFSIZE);
+
+	int		hasdiff = parse_nmea(str, message);
+
+	if (hasdiff) {
+#ifdef CHAR_DEBUG
+	    fprintf(stderr, "1");
+	    fflush(stderr);
+#endif
+	    ws_write(message, strlen(message));
+	}
+    }
 }
 
 int
@@ -36,7 +91,6 @@ main(int argc, char **argv)
     long	    last_sync_state;
     long	    now;
 
-    uv_loop_t      *loop = uv_default_loop();
 
     if (argc != 2) {
 	fprintf(stderr, "usage: %s <boatId>\n", argv[0]);
@@ -44,6 +98,7 @@ main(int argc, char **argv)
     }
     fprintf(stderr, "charlotte-client v%s\n", VERSION);
 
+    uv_loop_t      *loop = uv_default_loop();
     ws_init(argv[1], loop);
 
     signal(SIGPIPE, SIG_IGN);
@@ -56,65 +111,20 @@ main(int argc, char **argv)
 
     init_nmea_parser();
 
-    time(&last_sync_state);
+    time(&last_sync_state);	/* Will maybe use later */
 
-    /* Setting stdin to non - blocking. */
-    fcntl(0, F_SETFL, fcntl(0, F_GETFL) | O_NONBLOCK);
 
-    while (!interrupted) {
-	int		size = read(0, str, BUFSIZE);
+    uv_pipe_init(loop, &stdin_pipe, 0);
+    uv_pipe_open(&stdin_pipe, 0);
+    uv_read_start((uv_stream_t *) & stdin_pipe, alloc_buffer, read_stdin);
+    uv_run(loop, UV_RUN_DEFAULT);
 
-	if (size > 0) {
-	    str[size] = 0;
-	    addbuf(str);
+    /*
+     * time (&now); if ((now - last_sync_state) >= FULL_SYNC_INTERVAL) { if
+     * (get_nmea_state (message)) { //printf("Sending full state: %s\n",
+     * message); //ws_send(message); } time (&last_sync_state); }
+     */
 
-#ifdef CHAR_DEBUG
-	    fprintf(stderr, "R");
-	    fflush(stderr);
-#endif
-	    char           *line;
-
-	    while ((line = buf_getline()) != NULL) {
-#ifdef CHAR_DEBUG
-		fprintf(stderr, ".");
-		fflush(stderr);
-#endif
-
-		strcpy(str, line);
-		/* fprintf (stderr, "Processing: %s\n", str); */
-		memset(message, 0, BUFSIZE);
-		int		hasdiff = parse_nmea(str, message);
-
-		if (hasdiff) {
-#ifdef CHAR_DEBUG
-		    fprintf(stderr, "S");
-		    fflush(stderr);
-#endif
-		    /* printf ("sending %s\n", message); */
-		    ws_write(message, strlen(message));
-#ifdef CHAR_DEBUG
-		    fprintf(stderr, "1");
-		    fflush(stderr);
-#endif
-		    /* ws_service(); */
-#ifdef CHAR_DEBUG
-		    fprintf(stderr, "2");
-		    fflush(stderr);
-#endif
-		}
-	    }
-	    time(&now);
-	    if ((now - last_sync_state) >= FULL_SYNC_INTERVAL) {
-		if (get_nmea_state(message)) {
-		    //printf("Sending full state: %s\n", message);
-		    //ws_send(message);
-		}
-		time(&last_sync_state);
-	    }
-	}
-	//websockets loop
-	    uv_run(loop, UV_RUN_NOWAIT);
-    }
 
     ws_destroy();
     uv_loop_close(loop);
@@ -124,26 +134,28 @@ main(int argc, char **argv)
  * Get the next line of text, keeping a buffer of the incoming stdin input
  */
 
-#define BUFFER_SIZE	16384
-static char	buffer[BUFFER_SIZE];
 
 int
-addbuf(char *buf)
+addbuf(char *buf, int len)
 {
-    if (buf) {
-	int		len = strlen(buf);
-	int		cur_len = strlen(buffer);
-
-	if ((len + cur_len + 1) > BUFFER_SIZE) {
-	    memcpy(buffer, buffer + (len + 1), cur_len - (len + 1));
-	    memcpy(buffer + (len + 1), buf, (len + 1));
-	    return (len + cur_len + 1) - BUFFER_SIZE;
-	} else {
-	    strcat(buffer, buf);
-	    return 0;
-	}
+    if (!buf) {
+	return 0;
     }
-    return 0;
+    int		    cur_len = strlen(buffer);
+
+    if (len >= BUFFER_SIZE) {
+	fprintf(stderr, "Dropping %d bytes\n", (len - BUFFER_SIZE));
+	memcpy(buffer, buf + (len - BUFFER_SIZE), BUFFER_SIZE);
+	buffer[BUFFER_SIZE - 1] = 0;
+    } else if ((len + cur_len + 1) > BUFFER_SIZE) {
+	memcpy(buffer, buffer + (len + 1), cur_len - (len + 1));
+	memcpy(buffer + (len + 1), buf, (len + 1));
+	return (len + cur_len + 1) - BUFFER_SIZE;
+    } else {
+	memcpy(buffer + strlen(buffer), buf, len);
+	buffer[strlen(buffer) + len] = 0;
+	return 0;
+    }
 }
 
 char           *
@@ -156,8 +168,6 @@ buf_getline()
 
     for (int i = 0; i < BUFFER_SIZE && buffer[i]; i++) {
 	char		c = buffer[i];
-
-	//fprintf(stderr, "Char %c %d %s\n", c, c, ret);
 
 	if (c == '\n' || c == '\r') {
 	    line_found = 1;
@@ -178,7 +188,12 @@ buf_getline()
 	    memcpy(buffer, buffer + pos, BUFFER_SIZE - pos);
 	memset(buffer + (BUFFER_SIZE - pos), 0, pos);
 
-	return ret;
+
+	if (strlen(ret)) {
+	    return ret;
+	} else {
+	    return NULL;
+	}
     }
     return NULL;
 }
