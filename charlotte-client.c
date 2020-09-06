@@ -115,6 +115,8 @@ main(int argc, char **argv)
     uv_read_start((uv_stream_t *) & stdin_pipe, alloc_buffer, read_stdin);
     uv_run(loop, UV_RUN_DEFAULT);
 
+    fprintf(stderr, "Out of loop!");
+
     /*
      * time (&now); if ((now - last_sync_state) >= FULL_SYNC_INTERVAL) { if
      * (get_nmea_state (message)) { //printf("Sending full state: %s\n",

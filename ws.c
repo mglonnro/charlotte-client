@@ -76,7 +76,6 @@ connect_client(lws_sorted_usec_list_t * sul)
     struct my_conn *mco = lws_container_of(sul, struct my_conn, sul);
     struct lws_client_connect_info i;
 
-
     memset(&i, 0, sizeof(i));
 
     i.context = context;
@@ -129,6 +128,8 @@ callback_minimal(struct lws *wsi, enum lws_callback_reasons reason,
     struct my_conn *mco = (struct my_conn *)user;
     const struct msg *pmsg;
     int		    m     , flags;
+
+    fprintf(stderr, "callback: %d\n", reason);
 
     switch (reason) {
 
@@ -266,7 +267,7 @@ ws_init(char *id, uv_loop_t * loop)
 
     info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
     info.options |= LWS_SERVER_OPTION_LIBUV;
-    info.port = CONTEXT_PORT_NO_LISTEN;	/* we do not run any server */
+    info.port = CONTEXT_PORT_NO_LISTEN;	/* we do * not run any server */
     info.protocols = protocols;
     info.foreign_loops = (void *[]){
 	loop
