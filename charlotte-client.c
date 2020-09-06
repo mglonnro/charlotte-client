@@ -56,7 +56,6 @@ read_stdin (uv_stream_t * stream, ssize_t nread, const uv_buf_t * buf)
 	  process_buffer ();
       }
 
-    // OK to free buffer as write_data copies it.
     if (buf->base)
 	free (buf->base);
 }
