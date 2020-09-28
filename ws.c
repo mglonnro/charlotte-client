@@ -21,18 +21,6 @@
  * the client connection bound to it
  */
 
-static struct my_conn
-{
-    lws_sorted_usec_list_t sul;	/* schedule connection retry */
-    struct lws *wsi;		/* related wsi if any */
-    uint16_t retry_count;	/* count of consequetive retries */
-    struct lws_ring *ring;
-    uint32_t tail;
-    char flow_controlled;
-    uint8_t completed:1;
-    uint8_t write_consume_pending:1;
-} mco;
-
 struct msg
 {
     void *payload;		/* is malloc'd */
@@ -42,8 +30,51 @@ struct msg
     char final;
 };
 
-#define BOAT_ID_SIZE	50
+static struct my_conn
+{
+    lws_sorted_usec_list_t sul;	/* schedule connection retry */
+    struct lws *wsi;		/* related wsi if any */
+    uint16_t retry_count;	/* count of consequetive retries */
 
+    struct lws_ring *ring;
+    uint32_t tail;
+    char flow_controlled;
+    uint8_t completed:1;
+    uint8_t write_consume_pending:1;
+
+    struct per_session_data__minimal *pss_list;
+
+    struct msg amsg;		/* the one pending message... */
+    int current;		/* the current message number we are caching */
+} mco;
+
+/* one of these is created for each client connecting to us */
+
+struct per_session_data__minimal
+{
+    struct per_session_data__minimal *pss_list;
+    struct lws *wsi;
+    int last;			/* the last message number we sent */
+};
+
+
+/* one of these is created for each vhost our protocol is used with */
+
+struct per_vhost_data__minimal
+{
+    struct lws_context *context;
+    struct lws_vhost *vhost;
+    const struct lws_protocols *protocol;
+
+    struct per_session_data__minimal *pss_list;	/* linked-list of live pss */
+
+    struct msg amsg;		/* the one pending message... */
+    int current;		/* the current message number we are caching */
+};
+
+static struct per_vhost_data__minimal *vhost;
+
+#define BOAT_ID_SIZE	50
 static struct lws_context *context;
 static int interrupted, port = 443, ssl_connection = LCCSCF_USE_SSL;
 static const char *server_address = "community.nakedsailor.blog", *pro =
@@ -129,13 +160,93 @@ static int
 callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 		  void *user, void *in, size_t len)
 {
+    /* fprintf (stderr, "callback clien %d\n", reason); */
+
     struct my_conn *mco = (struct my_conn *) user;
+
+    struct per_session_data__minimal *pss =
+	(struct per_session_data__minimal *) user;
+    struct per_vhost_data__minimal *vhd =
+	(struct per_vhost_data__minimal *)
+	lws_protocol_vh_priv_get (lws_get_vhost (wsi),
+				  lws_get_protocol (wsi));
+
     const struct msg *pmsg;
 
     int m, flags;
 
     switch (reason)
       {
+      case LWS_CALLBACK_PROTOCOL_INIT:
+	  vhd = lws_protocol_vh_priv_zalloc (lws_get_vhost (wsi),
+					     lws_get_protocol (wsi),
+					     sizeof (struct
+						     per_vhost_data__minimal));
+	  vhd->context = lws_get_context (wsi);
+	  vhd->protocol = lws_get_protocol (wsi);
+	  vhd->vhost = lws_get_vhost (wsi);
+	  vhost = vhd;
+	  break;
+
+      case LWS_CALLBACK_ESTABLISHED:
+	  /* add ourselves to the list of live pss held in the vhd */
+	  lws_ll_fwd_insert (pss, pss_list, vhd->pss_list);
+	  pss->wsi = wsi;
+	  pss->last = vhd->current;
+	  break;
+
+      case LWS_CALLBACK_CLOSED:
+	  /* remove our closing pss from the list of live pss */
+	  lws_ll_fwd_remove (struct per_session_data__minimal, pss_list,
+			     pss, vhd->pss_list);
+	  break;
+
+      case LWS_CALLBACK_SERVER_WRITEABLE:
+	  if (!vhd->amsg.payload)
+	      break;
+
+	  if (pss->last == vhd->current)
+	      break;
+
+	  /* notice we allowed for LWS_PRE in the payload already */
+	  m = lws_write (wsi, ((unsigned char *) vhd->amsg.payload) +
+			 LWS_PRE, vhd->amsg.len, LWS_WRITE_TEXT);
+	  if (m < (int) vhd->amsg.len)
+	    {
+		lwsl_err ("ERROR %d writing to ws\n", m);
+		return -1;
+	    }
+
+	  pss->last = vhd->current;
+	  break;
+      case LWS_CALLBACK_RECEIVE:
+	  break;
+
+	  if (vhd->amsg.payload)
+	      __minimal_destroy_message (&vhd->amsg);
+
+	  vhd->amsg.len = len;
+	  /* notice we over-allocate by LWS_PRE */
+	  vhd->amsg.payload = malloc (LWS_PRE + len);
+	  if (!vhd->amsg.payload)
+	    {
+		lwsl_user ("OOM: dropping\n");
+		break;
+	    }
+
+	  memcpy ((char *) vhd->amsg.payload + LWS_PRE, in, len);
+	  vhd->current++;
+
+	  /*
+	   * let everybody know we want to write something on them
+	   * as soon as they are ready
+	   */
+	  lws_start_foreach_llp (struct per_session_data__minimal **,
+				 ppss, vhd->pss_list)
+	  {
+	      lws_callback_on_writable ((*ppss)->wsi);
+	  } lws_end_foreach_llp (ppss, pss_list);
+	  break;
 
       case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
 	  lwsl_err ("CLIENT_CONNECTION_ERROR: %s\n",
@@ -261,7 +372,8 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 }
 
 static const struct lws_protocols protocols[] = {
-    {"lws-minimal-client", callback_minimal, 0, 0,},
+    {"lws-minimal-client", callback_minimal,
+     sizeof (struct per_session_data__minimal), 128, 0, NULL, 0},
     {NULL, NULL, 0, 0}
 };
 
@@ -278,7 +390,9 @@ ws_init (char *id, uv_loop_t * loop)
 
     info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
     info.options |= LWS_SERVER_OPTION_LIBUV;
-    info.port = CONTEXT_PORT_NO_LISTEN;	/* we do * not run any server */
+    info.options |=
+	LWS_SERVER_OPTION_HTTP_HEADERS_SECURITY_BEST_PRACTICES_ENFORCE;
+    info.port = 7681;
     info.protocols = protocols;
     info.foreign_loops = (void *[])
     {
@@ -387,6 +501,36 @@ ws_write (char *buf, int len)
       {
 	  lws_callback_on_writable (mco.wsi);
       }
+
+    /* Send it to all clients as well */
+
+    struct per_vhost_data__minimal *vhd =
+	(struct per_vhost_data__minimal *) vhost;
+
+    if (vhd->amsg.payload)
+	__minimal_destroy_message (&vhd->amsg);
+
+    vhd->amsg.len = len;
+    /* notice we over-allocate by LWS_PRE */
+    vhd->amsg.payload = malloc (LWS_PRE + len);
+    if (!vhd->amsg.payload)
+      {
+	  lwsl_user ("OOM: dropping\n");
+      }
+
+    memcpy ((char *) vhd->amsg.payload + LWS_PRE, buf, len);
+    vhd->current++;
+
+    /*
+     * let everybody know we want to write something on them
+     * as soon as they are ready
+     */
+    lws_start_foreach_llp (struct per_session_data__minimal **,
+			   ppss, vhd->pss_list)
+    {
+	lws_callback_on_writable ((*ppss)->wsi);
+    } lws_end_foreach_llp (ppss, pss_list);
+
 #ifdef CHAR_DEBUG
     fprintf (stderr, "c");
     fflush (stderr);
