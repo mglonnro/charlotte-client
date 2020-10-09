@@ -2,7 +2,7 @@ PLATFORM=$(shell uname | tr '[A-Z]' '[a-z]')-$(shell uname -m)
 TARGETDIR=.
 TARGET=charlotte-client
 TARGETS=$(TARGET)
-OBJS=charlotte-client.o nmea_parser.o cJSON.o ws.o
+OBJS=charlotte-client.o nmea_parser.o cJSON.o ws.o epoch.o config.o
 STATICLIBS=/usr/local/lib/libwebsockets.a /usr/local/lib/libcurl.a /usr/local/lib/libuv.a
 LDFLAGS=-lssl -lcrypto
 VER=0.0.12
@@ -26,6 +26,14 @@ cJSON.o:	cJSON.c
 ws.o:	ws.c
 			indent -i4 ws.c
 			$(CC) $(CFLAGS) -c ws.c
+
+epoch.o:	epoch.c
+			indent -i4 epoch.c
+			$(CC) $(CFLAGS) -c epoch.c
+
+config.o:	config.c
+			indent -i4 config.c
+			$(CC) $(CFLAGS) -c config.c
 
 clean:
 	-rm -f $(TARGETS) $(OBJS) *.elf *.gdb

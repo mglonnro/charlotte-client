@@ -3,8 +3,10 @@
 #include <stdlib.h>
 #include "cJSON.h"
 #include "nmea_parser.h"
+#include "config.h"
 
 struct nmea_state state;
+struct nmea_sources sources;
 struct claim_state c_state;
 
 int debug_count = 0;
@@ -30,6 +32,122 @@ get_nmea_state (char *message)
     else
       {
 	  return 0;
+      }
+}
+
+char *
+process_inbound_message (char *message)
+{
+    char *ret = NULL;
+
+    fprintf (stderr, "Incoming message: %s\n", message);
+    cJSON *json = cJSON_Parse (message);
+    if (json == NULL)
+      {
+	  cJSON_Delete (json);
+	  fprintf (stderr, "Couldn't parse json '%s'\n", message);
+      }
+
+    cJSON *s = cJSON_GetObjectItemCaseSensitive (json, "sources");
+    if (s != NULL)
+      {
+	  set_nmea_sources (s);
+      }
+
+    s = cJSON_GetObjectItemCaseSensitive (json, "cmd");
+    if (s != NULL)
+      {
+	  char fname[256];
+	  cJSON *f = cJSON_GetObjectItemCaseSensitive (json, "guid");
+	  if (f != NULL)
+	    {
+		sprintf (fname, "logs/cmd.%s.log", f->valuestring);
+		FILE *out = fopen (fname, "w");
+		fprintf (out, "%s\n", message);
+		fclose (out);
+	    }
+
+	  process_cmd (json);
+
+	  cJSON *state = get_config_state ();
+
+	  if (state)
+	    {
+		ret = cJSON_Print (state);
+		cJSON_Delete (state);
+	    }
+
+      }
+
+    cJSON_Delete (json);
+
+    if (ret)
+      {
+	  fprintf (stderr, "Returning reply: %s\n", ret);
+      }
+    return ret;
+}
+
+int
+set_nmea_sources (cJSON * s)
+{
+    if (s != NULL)
+      {
+	  cJSON *f = cJSON_GetObjectItemCaseSensitive (s, "position");
+	  if (f != NULL)
+	    {
+		if (f->valuestring != NULL)
+		  {
+		      strcpy (sources.position, f->valuestring);
+		      fprintf (stderr, "Setting position source to: %s\n",
+			       f->valuestring);
+		  }
+	    }
+	  f = cJSON_GetObjectItemCaseSensitive (s, "heading");
+	  if (f != NULL && f->valuestring != NULL)
+	    {
+		strcpy (sources.heading, f->valuestring);
+		fprintf (stderr, "Setting heading source to: %s\n",
+			 f->valuestring);
+	    }
+	  f = cJSON_GetObjectItemCaseSensitive (s, "attitude");
+	  if (f != NULL && f->valuestring != NULL)
+	    {
+		strcpy (sources.attitude, f->valuestring);
+		fprintf (stderr, "Setting attitude source to: %s\n",
+			 f->valuestring);
+	    }
+
+	  save_nmea_sources ();
+      }
+
+}
+
+void
+save_nmea_sources ()
+{
+    FILE *out = fopen ("nmea.sources", "w");
+    fwrite (&sources, sizeof (sources), 1, out);
+    fclose (out);
+}
+
+void
+print_nmea_sources ()
+{
+    fprintf (stderr, "Position source: %s\n", sources.position);
+    fprintf (stderr, "Heading source: %s\n", sources.heading);
+    fprintf (stderr, "Attitude source: %s\n", sources.attitude);
+}
+
+void
+read_nmea_sources ()
+{
+    FILE *in = fopen ("nmea.sources", "r");
+    if (in)
+      {
+	  fread (&sources, sizeof (sources), 1, in);
+	  fclose (in);
+	  print_nmea_sources ();
       }
 }
 
@@ -79,21 +197,33 @@ parse_nmea (char *line, char *message)
      * 129039, parse: (o) => { return { ais: "report", data: o.fields } } },
      */
 
+    char un[DLENGTH];
+    memset (un, 0, DLENGTH);
+    int src = get_src (json);
+    get_unique_number (src, &c_newstate, un);
+
     if (pgn->valueint == 127250)
       {
-	  //printf("PGN: %d %d\n", cJSON_IsString(pgn), pgn->valueint);
-	  char *reference = get_field_value_string (json, "Reference");
-	  if (reference)
+	  if (!sources.heading[0] || !strcmp (un, sources.heading))
 	    {
-		if (!strcmp (reference, "Magnetic"))
+		//printf("PGN: %d %d\n", cJSON_IsString(pgn), pgn->valueint);
+		char *reference = get_field_value_string (json, "Reference");
+		if (reference)
 		  {
-		      update_nmea_value (json, newstate.heading, "Heading");
+		      if (!strcmp (reference, "Magnetic"))
+			{
+			    update_nmea_value (json, newstate.heading,
+					       "Heading");
+			}
+		      else
+			{
+			    update_nmea_value (json, newstate.trueheading,
+					       "Heading");
+			}
 		  }
-		else
-		  {
-		      update_nmea_value (json, newstate.trueheading,
-					 "Heading");
-		  }
+	    }
+	  else
+	    {
 	    }
       }
     else if (pgn->valueint == 127258)
@@ -102,8 +232,14 @@ parse_nmea (char *line, char *message)
       }
     else if (pgn->valueint == 129025)
       {
-	  update_nmea_value (json, newstate.lng, "Longitude");
-	  update_nmea_value (json, newstate.lat, "Latitude");
+	  if (!sources.position[0] || !strcmp (un, sources.position))
+	    {
+		update_nmea_value (json, newstate.lng, "Longitude");
+		update_nmea_value (json, newstate.lat, "Latitude");
+	    }
+	  else
+	    {
+	    }
       }
     else if (pgn->valueint == 129026)
       {
@@ -116,8 +252,14 @@ parse_nmea (char *line, char *message)
       }
     else if (pgn->valueint == 127257)
       {
-	  update_nmea_value (json, newstate.pitch, "Pitch");
-	  update_nmea_value (json, newstate.roll, "Roll");
+	  if (!sources.attitude[0] || !strcmp (un, sources.attitude))
+	    {
+		update_nmea_value (json, newstate.pitch, "Pitch");
+		update_nmea_value (json, newstate.roll, "Roll");
+	    }
+	  else
+	    {
+	    }
       }
     else if (pgn->valueint == 128259)
       {
@@ -132,7 +274,6 @@ parse_nmea (char *line, char *message)
       {
 	  //printf("Got claim for src: %d\n", get_src(json));
 	  update_nmea_claim (json, c_newstate.claims);
-
 	  /*
 	   * printf("CLAIM TABLE:\n"); for (int x = 0; x < MAXCLAIMS; x++) { if
 	   * (c_newstate.claims[x].src != 0) { printf("  SRC %d => %s\n",
@@ -142,11 +283,9 @@ parse_nmea (char *line, char *message)
       }
     else if (pgn->valueint == 126996)
       {
-	  int src = get_src (json);
 	  printf ("Device data a coming!\n");
 	  char unique_number[DLENGTH];
 	  int found = get_unique_number (src, &c_newstate, unique_number);
-
 	  if (found)
 	    {
 		printf ("Updating device with unique number %s\n",
@@ -156,10 +295,8 @@ parse_nmea (char *line, char *message)
 	  else
 	    {
 		printf ("Got device but no unique number for src: %d\n", src);
-
 	    }
 	  printf ("DEVICE TABLE:\n");
-
 	  for (int x = 0; x < MAXDEVICES; x++)
 	    {
 		if (c_newstate.devices[x].isactive)
@@ -173,7 +310,6 @@ parse_nmea (char *line, char *message)
 	  save_state (&c_newstate);
       }
     cJSON *diff = build_diff (&state, &newstate, &c_state, &c_newstate);
-
     if (pgn->valueint == 129038 || pgn->valueint == 129039
 	|| pgn->valueint == 129794)
       {
@@ -183,7 +319,6 @@ parse_nmea (char *line, char *message)
 	    }
 	  cJSON *values = cJSON_GetObjectItemCaseSensitive (json, "fields");
 	  int user_id = get_ais_user_id (json);
-
 	  if (user_id == -1)
 	    {
 		printf ("ERROR!");
@@ -192,25 +327,19 @@ parse_nmea (char *line, char *message)
 	  char key[256];
 	  memset (key, 0, 256);
 	  sprintf (key, "%d", user_id);
-
 	  ais = cJSON_CreateObject ();
-
 	  char *v = cJSON_Print (values);
 	  cJSON *aisvalues = cJSON_Parse (v);
-
 	  if (aisvalues)
 	    {
 		cJSON_AddItemToObject (ais, key, aisvalues);
 	    }
 	  free (v);
-
 	  cJSON_AddItemToObject (diff, "ais", ais);
       }
     memcpy (&state, &newstate, sizeof (newstate));
     memcpy (&c_state, &c_newstate, sizeof (c_newstate));
-
     cJSON_Delete (json);
-
     if (diff)
       {
 	  char *p = cJSON_Print (diff);
@@ -218,7 +347,6 @@ parse_nmea (char *line, char *message)
 	  free (p);
 	  trim_message (message);
 	  cJSON_Delete (diff);
-
 	  if (ais)
 	    {
 		ais = NULL;
@@ -236,7 +364,6 @@ trim_message (char *m)
 {
     char buf[strlen (m) + 1];
     int i = 0;
-
     for (int x = 0; x < strlen (m); x++)
       {
 	  if (m[x] != 10 && m[x] != 13 && m[x] != 9)
@@ -250,18 +377,19 @@ trim_message (char *m)
 }
 
 cJSON *
-build_diff (struct nmea_state *old_state, struct nmea_state *new_state,
+build_diff (struct nmea_state *old_state,
+	    struct nmea_state *new_state,
 	    struct claim_state *c_old_state, struct claim_state *c_new_state)
 {
     cJSON *ret = cJSON_CreateObject ();
-    int changes =
-	diff_values (ret, old_state->heading, new_state->heading, "heading");
+    int changes = diff_values (ret, old_state->heading, new_state->heading,
+			       "heading");
     changes +=
 	diff_values (ret, old_state->variation, new_state->variation,
 		     "variation");
     changes +=
-	diff_values (ret, old_state->trueheading, new_state->trueheading,
-		     "trueheading");
+	diff_values (ret, old_state->trueheading,
+		     new_state->trueheading, "trueheading");
     changes += diff_values (ret, old_state->cog, new_state->cog, "cog");
     changes += diff_values (ret, old_state->sog, new_state->sog, "sog");
     changes += diff_values (ret, old_state->aws, new_state->aws, "aws");
@@ -272,14 +400,12 @@ build_diff (struct nmea_state *old_state, struct nmea_state *new_state,
     changes += diff_values (ret, old_state->depth, new_state->depth, "depth");
     changes += diff_values (ret, old_state->pitch, new_state->pitch, "pitch");
     changes += diff_values (ret, old_state->roll, new_state->roll, "roll");
-
     changes +=
-	diff_claim_values (ret, c_old_state->claims, c_new_state->claims,
-			   "claims");
+	diff_claim_values (ret, c_old_state->claims,
+			   c_new_state->claims, "claims");
     changes +=
-	diff_device_values (ret, c_old_state->devices, c_new_state->devices,
-			    "devices");
-
+	diff_device_values (ret, c_old_state->devices,
+			    c_new_state->devices, "devices");
     if (changes)
       {
 	  //printf("JSON: %s\n", cJSON_Print(ret));
@@ -293,12 +419,11 @@ build_diff (struct nmea_state *old_state, struct nmea_state *new_state,
 }
 
 int
-diff_claim_values (cJSON * root, struct claim *old_arr, struct claim *new_arr,
-		   char *fieldname)
+diff_claim_values (cJSON * root, struct claim *old_arr,
+		   struct claim *new_arr, char *fieldname)
 {
     int diff = 0;
     cJSON *src = cJSON_CreateObject ();
-
     for (int n = 0; n < MAXCLAIMS; n++)
       {
 	  if (new_arr[n].src == 0)
@@ -343,7 +468,6 @@ diff_device_values (cJSON * root, struct device *old_arr,
 {
     int diff = 0;
     cJSON *src = cJSON_CreateObject ();
-
     for (int n = 0; n < MAXDEVICES; n++)
       {
 	  int found = 0;
@@ -368,11 +492,9 @@ diff_device_values (cJSON * root, struct device *old_arr,
 					 new_arr[n].software_version_code);
 		cJSON_AddStringToObject (v, "model_serial_code",
 					 new_arr[n].model_serial_code);
-
 		char key[256];
 		memset (key, 0, 256);
 		sprintf (key, "%s", new_arr[n].unique_number);
-
 		cJSON_AddItemToObject (src, key, v);
 		diff = 1;
 	    }
@@ -398,7 +520,6 @@ diff_values (cJSON * root, struct nmea_value *old_arr,
 {
     int diff = 0;
     cJSON *src = cJSON_CreateObject ();
-
     for (int n = 0; n < MAXSOURCES; n++)
       {
 	  int found = 0;
@@ -452,7 +573,6 @@ int
 get_src (cJSON * json)
 {
     cJSON *src = cJSON_GetObjectItemCaseSensitive (json, "src");
-
     return src->valueint;
 }
 
@@ -461,7 +581,6 @@ get_ais_user_id (cJSON * json)
 {
     cJSON *fields = cJSON_GetObjectItemCaseSensitive (json, "fields");
     cJSON *v = cJSON_GetObjectItemCaseSensitive (fields, "User ID");
-
     if (v)
       {
 	  return v->valueint;
@@ -474,7 +593,6 @@ update_nmea_claim (cJSON * json, struct claim *arr)
 {
     cJSON *fields = cJSON_GetObjectItemCaseSensitive (json, "fields");
     cJSON *src = cJSON_GetObjectItemCaseSensitive (json, "src");
-
     if (fields)
       {
 	  cJSON *value =
@@ -484,9 +602,7 @@ update_nmea_claim (cJSON * json, struct claim *arr)
 		char unique_number[DLENGTH];
 		strcpy (unique_number, value->valuestring);
 		int s = src->valueint;
-
 		//printf("Claim with unique number: %s\n", unique_number);
-
 		/* Delete old value if any ,return if already exists */
 		for (int x = 0; x < MAXCLAIMS; x++)
 		  {
@@ -536,7 +652,6 @@ int
 update_nmea_device (cJSON * json, char *unique_number, struct device *arr)
 {
     cJSON *fields = cJSON_GetObjectItemCaseSensitive (json, "fields");
-
     if (fields)
       {
 	  cJSON *model_id =
@@ -548,7 +663,6 @@ update_nmea_device (cJSON * json, char *unique_number, struct device *arr)
 	      cJSON_GetObjectItemCaseSensitive (fields, "Model Version");
 	  cJSON *model_serial_code =
 	      cJSON_GetObjectItemCaseSensitive (fields, "Model Serial Code");
-
 	  if (model_id)
 	    {
 		/* Delete old value if any ,return if already exists */
@@ -566,7 +680,6 @@ update_nmea_device (cJSON * json, char *unique_number, struct device *arr)
 		      if (arr[x].isactive == 0)
 			{
 			    arr[x].isactive = 1;
-
 			    strcpy (arr[x].unique_number, unique_number);
 			    if (cJSON_IsString (model_id)
 				&& model_id->valuestring != NULL)
@@ -575,7 +688,6 @@ update_nmea_device (cJSON * json, char *unique_number, struct device *arr)
 					  model_id->valuestring);
 			      }
 			    printf ("Adding! 2\n");
-
 			    if (cJSON_IsString (model_version)
 				&& model_version->valuestring != NULL)
 			      {
@@ -583,7 +695,6 @@ update_nmea_device (cJSON * json, char *unique_number, struct device *arr)
 					  model_version->valuestring);
 			      }
 			    printf ("Adding! 2\n");
-
 			    if (cJSON_IsString (software_version_code)
 				&& software_version_code->valuestring != NULL)
 			      {
@@ -591,7 +702,6 @@ update_nmea_device (cJSON * json, char *unique_number, struct device *arr)
 					  software_version_code->valuestring);
 			      }
 			    printf ("Adding! 2\n");
-
 			    if (cJSON_IsString (model_serial_code)
 				&& model_serial_code->valuestring != NULL)
 			      {
@@ -599,7 +709,6 @@ update_nmea_device (cJSON * json, char *unique_number, struct device *arr)
 					  model_serial_code->valuestring);
 			      }
 			    printf ("Adding! 2\n");
-
 			    return 1;
 			}
 		  }
@@ -633,7 +742,6 @@ update_nmea_value (cJSON * json, struct nmea_value *arr, char *fieldname)
 {
     cJSON *fields = cJSON_GetObjectItemCaseSensitive (json, "fields");
     cJSON *src = cJSON_GetObjectItemCaseSensitive (json, "src");
-
     if (fields)
       {
 	  cJSON *value = cJSON_GetObjectItemCaseSensitive (fields, fieldname);
@@ -641,7 +749,6 @@ update_nmea_value (cJSON * json, struct nmea_value *arr, char *fieldname)
 	    {
 		//printf("  value %f\n", value->valuedouble);
 		insert_or_replace (arr, src->valueint, value->valuedouble);
-
 		for (int x = 0; x < MAXSOURCES; x++)
 		  {
 		      //printf("   %d src %d value %f\n", x, arr[x].src, arr[x].value);
@@ -655,7 +762,6 @@ void
 insert_or_replace (struct nmea_value *arr, int src, float value)
 {
     int x = 0;
-
     for (x = 0; x < MAXSOURCES && arr[x].src != 0; x++)
       {
 	  if (arr[x].src == src)
@@ -677,7 +783,6 @@ int
 save_state (struct claim_state *c)
 {
     FILE *outfile;
-
     //open file for writing
     outfile = fopen ("claim.state", "w");
     if (outfile == NULL)

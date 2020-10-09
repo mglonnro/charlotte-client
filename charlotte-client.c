@@ -113,6 +113,8 @@ main (int argc, char **argv)
     strcpy (boat_id, argv[1]);
 
     init_nmea_parser ();
+    init_config ();		/* boat configuration, sails etc! */
+    read_nmea_sources ();	/* read nmea sources state */
 
     time (&last_sync_state);	/* Will maybe use later */
 
