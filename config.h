@@ -14,3 +14,13 @@ struct config {
 };
 
 cJSON *get_config_state();
+void
+init_config ();
+void
+save_config ();
+void
+process_state (cJSON * json);
+void
+process_cmd (cJSON * json);
+void
+read_nmea_sources ();

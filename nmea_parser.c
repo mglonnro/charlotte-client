@@ -23,9 +23,16 @@ get_nmea_state (char *message)
     if (diff)
       {
 	  char *p = cJSON_Print (diff);
-	  sprintf (message, "%s", p);
+	  trim_message (p);
+	  fprintf (stderr, "state: %s\n", p);
 	  free (p);
+
+	  cJSON *nosrc = nmea_strip_sources (diff);
+	  p = cJSON_Print (nosrc);
+	  sprintf (message, "%s", p);
 	  trim_message (message);
+	  free (p);
+	  cJSON_Delete (nosrc);
 	  cJSON_Delete (diff);
 	  return 1;
       }
@@ -36,12 +43,17 @@ get_nmea_state (char *message)
 }
 
 char *
-process_inbound_message (char *message)
+process_inbound_message (char *buf, int len)
 {
     char *ret = NULL;
 
+    char *message = malloc (len + 1);
+    memcpy (message, buf, len);
+    message[len] = 0;
+
     fprintf (stderr, "Incoming message: %s\n", message);
     cJSON *json = cJSON_Parse (message);
+
     if (json == NULL)
       {
 	  cJSON_Delete (json);
@@ -74,12 +86,23 @@ process_inbound_message (char *message)
 	  if (state)
 	    {
 		ret = cJSON_Print (state);
+		if (ret != NULL)
+		  {
+		      trim_message (ret);
+		  }
 		cJSON_Delete (state);
 	    }
 
       }
 
+    s = cJSON_GetObjectItemCaseSensitive (json, "config");
+    if (s != NULL)
+      {
+	  process_state (s);
+      }
+
     cJSON_Delete (json);
+    free (message);
 
     if (ret)
       {
@@ -88,7 +111,7 @@ process_inbound_message (char *message)
     return ret;
 }
 
-int
+void
 set_nmea_sources (cJSON * s)
 {
     if (s != NULL)
@@ -152,7 +175,7 @@ read_nmea_sources ()
 }
 
 int
-parse_nmea (char *line, char *message)
+parse_nmea (char *line, char *message, char *message_nosrc)
 {
     cJSON *json = cJSON_Parse (line);
     if (json == NULL)
@@ -346,6 +369,13 @@ parse_nmea (char *line, char *message)
 	  sprintf (message, "%s", p);
 	  free (p);
 	  trim_message (message);
+
+	  cJSON *nosrc = nmea_strip_sources (diff);
+	  p = cJSON_Print (nosrc);
+	  sprintf (message_nosrc, "%s", p);
+	  trim_message (message_nosrc);
+	  free (p);
+	  cJSON_Delete (nosrc);
 	  cJSON_Delete (diff);
 	  if (ais)
 	    {
@@ -357,6 +387,33 @@ parse_nmea (char *line, char *message)
       {
 	  return 0;
       }
+}
+
+cJSON *
+nmea_strip_sources (cJSON * json)
+{
+    cJSON *nosrc = cJSON_CreateObject ();
+
+    cJSON *obj = NULL;
+    cJSON *src = NULL;
+
+    cJSON_ArrayForEach (obj, json)
+    {
+	if (!strcmp (obj->string, "ais"))
+	  {
+	      cJSON_AddItemReferenceToObject (nosrc, obj->string, obj);
+	  }
+	else
+	  {
+	      cJSON_ArrayForEach (src, obj)
+	      {
+		  cJSON_AddItemReferenceToObject (nosrc, obj->string, src);
+		  break;
+	      }
+	  }
+    }
+
+    return nosrc;
 }
 
 void
@@ -482,7 +539,7 @@ diff_device_values (cJSON * root, struct device *old_arr,
 		  }
 	    }
 
-	  if (!found)
+	  if (!found && new_arr[n].unique_number[0])
 	    {
 		cJSON *v = cJSON_CreateObject ();
 		cJSON_AddStringToObject (v, "model_id", new_arr[n].model_id);
@@ -798,6 +855,23 @@ save_state (struct claim_state *c)
       }
 }
 
+void
+print_claim_state (struct claim_state *c)
+{
+    for (int i = 0; i < MAXCLAIMS; i++)
+      {
+	  fprintf (stderr, "Claim #%d: src %d unique %s\n", i,
+		   c->claims[i].src, c->claims[i].unique_number);
+      }
+
+    for (int i = 0; i < MAXDEVICES; i++)
+      {
+	  fprintf (stderr, "Ddevice #%d: unique %s\n", i,
+		   c->devices[i].unique_number[0] ? c->devices[i].
+		   unique_number : "NULL");
+      }
+}
+
 int
 init_nmea_parser ()
 {
@@ -808,5 +882,7 @@ init_nmea_parser ()
 	  fread (&c_state, sizeof (struct claim_state), 1, infile);
 	  fclose (infile);
       }
+
+    print_claim_state (&c_state);
     return 1;
 }

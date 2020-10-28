@@ -60,6 +60,25 @@ struct per_session_data__minimal
     int last;			/* the last message number we sent */
 };
 
+int
+get_connected_count (struct per_session_data__minimal *pss_list)
+{
+    if (!pss_list)
+      {
+	  return 0;
+      }
+
+    int count = 1;
+    struct per_session_data__minimal *next = pss_list;
+
+    while (next->pss_list != NULL)
+      {
+	  count++;
+	  next = next->pss_list;
+      }
+
+    return count;
+}
 
 /* one of these is created for each vhost our protocol is used with */
 
@@ -82,6 +101,19 @@ struct per_vhost_data__minimal
 };
 
 static struct per_vhost_data__minimal *vhost;
+
+void
+clear_lws_ring (struct per_vhost_data__minimal *vhd, struct lws_ring *ring)
+{
+
+    size_t count = lws_ring_get_count_waiting_elements (ring, &vhd->tail);
+    lws_ring_consume (ring, &vhd->tail, NULL, count);
+#ifdef CHAR_DEBUG2
+    fprintf (stderr, "C");
+    fflush (stderr);
+#endif
+    return;
+}
 
 #define BOAT_ID_SIZE	50
 static struct lws_context *context;
@@ -153,7 +185,7 @@ connect_client (lws_sorted_usec_list_t * sul)
       }
 }
 
-#define RING_DEPTH 1024
+#define RING_DEPTH 512
 
 static void
 __minimal_destroy_message (void *_msg)
@@ -164,6 +196,8 @@ __minimal_destroy_message (void *_msg)
     msg->payload = NULL;
     msg->len = 0;
 }
+
+#define MSGBUFSIZE 16384
 
 static int
 callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
@@ -182,6 +216,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 
     const struct msg *pmsg;
     char *reply;
+    char message[MSGBUFSIZE];
 
     int m, flags;
 
@@ -210,12 +245,37 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	  pss->wsi = wsi;
 	  pss->last = vhd->current;
 
+	  fprintf (stderr, "Connected count: %d\n",
+		   get_connected_count (vhd->pss_list));
+
+	  /* Send config & state */
+	  memset (message, 0, MSGBUFSIZE);
+	  get_nmea_state (message);
+
+	  if (message[0])
+	    {
+		fprintf (stderr, "Sending state: %s\n", message);
+		ws_write_client (message, strlen (message) + 1);
+	    }
+
+	  cJSON *config = get_config_state ();
+	  char *p = cJSON_Print (config);
+	  trim_message (p);
+
+	  fprintf (stderr, "Sending config: %s\n", p);
+
+	  ws_write_client (p, strlen (p) + 1);
+	  free (p);
+	  cJSON_Delete (config);
+
 	  break;
 
       case LWS_CALLBACK_CLOSED:
 	  /* remove our closing pss from the list of live pss */
 	  lws_ll_fwd_remove (struct per_session_data__minimal, pss_list,
 			     pss, vhd->pss_list);
+	  fprintf (stderr, "Connected count: %d\n",
+		   get_connected_count (vhd->pss_list));
 	  break;
 
       case LWS_CALLBACK_SERVER_WRITEABLE:
@@ -235,6 +295,11 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	     }
 
 	     pss->last = vhd->current; */
+
+#ifdef CHAR_DEBUG2
+	  fprintf (stderr, "w1");
+	  fflush (stderr);
+#endif
 
 	  if (vhd->write_consume_pending)
 	    {
@@ -269,7 +334,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	  break;
       case LWS_CALLBACK_RECEIVE:
 	  /* Inbound message from client */
-	  reply = process_inbound_message (in);
+	  reply = process_inbound_message (in, len);
 
 	  /* Forward it to cloud */
 	  ws_write_cloud (in, len);
@@ -321,7 +386,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 
       case LWS_CALLBACK_CLIENT_RECEIVE:
 	  fprintf (stderr, "LWS_CALLBACK_CLIENT_RECEIVE\n");
-	  char *reply = process_inbound_message (in);
+	  char *reply = process_inbound_message (in, len);
 	  if (reply)
 	    {
 		free (reply);
@@ -571,7 +636,7 @@ ws_write_cloud (char *buf, int len)
      * / has closed.
      */
 
-    fprintf (stderr, "Asking for write callback: %s\n", buf);
+    /* fprintf (stderr, "Asking for write callback: %s\n", buf);  */
 
     if (mco.ring)
       {
@@ -590,12 +655,34 @@ ws_write_client (char *buf, int len)
 
     if (!vhd->s_ring)
       {
+#ifdef CHAR_DEBUG2
+	  fprintf (stderr, "e1");
+	  fflush (stderr);
+#endif
 	  return 0;
       }
+
+    if (get_connected_count (vhd->pss_list) == 0)
+      {
+	  clear_lws_ring (vhd, vhd->s_ring);
+	  return 0;
+      }
+
     int n = (int) lws_ring_get_count_free_elements (vhd->s_ring);
     if (!n)
       {
+#ifdef CHAR_DEBUG2
+	  fprintf (stderr, "e2");
+	  fflush (stderr);
+#endif
 	  lwsl_user ("dropping!\n");
+
+	  lws_start_foreach_llp (struct per_session_data__minimal **,
+				 ppss, vhd->pss_list)
+	  {
+	      lws_callback_on_writable ((*ppss)->wsi);
+	  } lws_end_foreach_llp (ppss, pss_list);
+
 	  return 0;
       }
     amsg.first = 1;
@@ -606,6 +693,10 @@ ws_write_client (char *buf, int len)
     amsg.payload = malloc (LWS_PRE + len);
     if (!amsg.payload)
       {
+#ifdef CHAR_DEBUG2
+	  fprintf (stderr, "e3");
+	  fflush (stderr);
+#endif
 	  lwsl_user ("OOM: dropping\n");
 	  return 0;
       }
@@ -615,6 +706,10 @@ ws_write_client (char *buf, int len)
 
     if (!lws_ring_insert (vhd->s_ring, &amsg, 1))
       {
+#ifdef CHAR_DEBUG2
+	  fprintf (stderr, "e4");
+	  fflush (stderr);
+#endif
 	  lwsl_user ("dropping!\n");
 	  __minimal_destroy_message (&amsg);
 	  return 0;
@@ -624,9 +719,14 @@ ws_write_client (char *buf, int len)
      * let everybody know we want to write something on them
      * as soon as they are ready
      */
+    int count = 0;
     lws_start_foreach_llp (struct per_session_data__minimal **,
 			   ppss, vhd->pss_list)
     {
+#ifdef CHAR_DEBUG2
+	fprintf (stderr, "c%d", count++);
+	fflush (stderr);
+#endif
 	lws_callback_on_writable ((*ppss)->wsi);
     } lws_end_foreach_llp (ppss, pss_list);
 

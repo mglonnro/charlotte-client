@@ -35,6 +35,9 @@ cJSON *
 get_config_state ()
 {
     cJSON *root = cJSON_CreateObject ();
+    cJSON *config = cJSON_CreateObject ();
+    cJSON_AddItemToObject (root, "config", config);
+
     int x;
 
     for (x = 0; x < MAXITEMS; x++)
@@ -44,7 +47,7 @@ get_config_state ()
 		break;
 	    }
 
-	  cJSON_AddItemToObject (root, c.items[x].key,
+	  cJSON_AddItemToObject (config, c.items[x].key,
 				 cJSON_CreateString (c.items[x].value));
       }
 
@@ -58,6 +61,49 @@ get_config_state ()
     cJSON_AddItemToObject (root, "time", cJSON_CreateNumber (c.time));
 
     return root;		/* caller responsible for free */
+}
+
+void
+process_state (cJSON * json)
+{
+    cJSON *obj = NULL;
+
+    cJSON_ArrayForEach (obj, json)
+    {
+	int x, found = 0;
+	for (x = 0; x < MAXITEMS; x++)
+	  {
+	      if (!c.items[x].key[0])
+		{
+		    break;
+		}
+	      if (!strcmp (c.items[x].key, obj->string))
+		{
+		    found = 1;
+
+		    if (obj->valuestring)
+		      {
+			  strcpy (c.items[x].value, obj->valuestring);
+			  fprintf (stderr, "Setting %s to %s\n", obj->string,
+				   obj->valuestring);
+		      }
+		    else
+		      {
+			  fprintf (stderr, "Clearing %s\n", obj->string);
+			  memset (c.items[x].value, 0, VALUELEN);
+		      }
+		}
+	  }
+
+	if (!found && obj->valuestring)
+	  {
+	      fprintf (stderr, "Setting %s to %s\n", obj->string,
+		       obj->valuestring);
+	      strcpy (c.items[x].key, obj->string);
+	      strcpy (c.items[x].value, obj->valuestring);
+	  }
+
+    }
 }
 
 void
