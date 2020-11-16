@@ -78,7 +78,11 @@
 #endif
 
 #ifndef NAN
+#ifdef _WIN32
+#define NAN sqrt(-1.0)
+#else
 #define NAN 0.0/0.0
+#endif
 #endif
 
 typedef struct {
@@ -92,7 +96,7 @@ CJSON_PUBLIC(const char *) cJSON_GetErrorPtr(void)
     return (const char*) (global_error.json + global_error.position);
 }
 
-CJSON_PUBLIC(char *) cJSON_GetStringValue(cJSON *item) 
+CJSON_PUBLIC(char *) cJSON_GetStringValue(const cJSON * const item) 
 {
     if (!cJSON_IsString(item)) 
     {
@@ -102,18 +106,18 @@ CJSON_PUBLIC(char *) cJSON_GetStringValue(cJSON *item)
     return item->valuestring;
 }
 
-CJSON_PUBLIC(double) cJSON_GetNumberValue(cJSON *item) 
+CJSON_PUBLIC(double) cJSON_GetNumberValue(const cJSON * const item) 
 {
     if (!cJSON_IsNumber(item)) 
     {
-        return NAN;
+        return (double) NAN;
     }
 
     return item->valuedouble;
 }
 
 /* This is a safeguard to prevent copy-pasters from using incompatible C and header files */
-#if (CJSON_VERSION_MAJOR != 1) || (CJSON_VERSION_MINOR != 7) || (CJSON_VERSION_PATCH != 13)
+#if (CJSON_VERSION_MAJOR != 1) || (CJSON_VERSION_MINOR != 7) || (CJSON_VERSION_PATCH != 14)
     #error cJSON.h and cJSON.c have different versions. Make sure that both have the same.
 #endif
 
@@ -192,12 +196,14 @@ static unsigned char* cJSON_strdup(const unsigned char* string, const internal_h
     }
 
     length = strlen((const char*)string) + sizeof("");
-    copy = hooks->allocate(length);
+    copy = (unsigned char*)hooks->allocate(length);
+    if (copy != NULL) {
+	memset(copy, 0, length);
+    }
     if (copy == NULL)
     {
         return NULL;
     }
-    memset(copy, 0, length);
     memcpy(copy, string, length);
 
     return copy;
@@ -487,8 +493,6 @@ static unsigned char* ensure(printbuffer * const p, size_t needed)
     {
         /* reallocate with realloc if available */
         newbuffer = (unsigned char*)p->hooks.reallocate(p->buffer, newsize);
-	memset(newbuffer + p->offset + 1, 0, newsize - p->offset - 1);
-
         if (newbuffer == NULL)
         {
             p->hooks.deallocate(p->buffer);
@@ -497,6 +501,7 @@ static unsigned char* ensure(printbuffer * const p, size_t needed)
 
             return NULL;
         }
+	memset(newbuffer, 0, newsize);
     }
     else
     {
@@ -807,6 +812,9 @@ static cJSON_bool parse_string(cJSON * const item, parse_buffer * const input_bu
         /* This is at most how much we need for the output */
         allocation_length = (size_t) (input_end - buffer_at_offset(input_buffer)) - skipped_bytes;
         output = (unsigned char*)input_buffer->hooks.allocate(allocation_length + sizeof(""));
+	if (output != NULL) {
+	    memset(output, 0, allocation_length + sizeof("")); /* GML */
+	}
         if (output == NULL)
         {
             goto fail; /* allocation failure */
@@ -1191,7 +1199,7 @@ static unsigned char *print(const cJSON * const item, cJSON_bool format, const i
 
     /* create buffer */
     buffer->buffer = (unsigned char*) hooks->allocate(default_buffer_size);
-    memset(buffer->buffer, 0, default_buffer_size);
+    memset(buffer->buffer, 0, default_buffer_size); /* GML */
     buffer->length = default_buffer_size;
     buffer->format = format;
     buffer->hooks = *hooks;
@@ -1223,7 +1231,6 @@ static unsigned char *print(const cJSON * const item, cJSON_bool format, const i
         {
             goto fail;
         }
-	memset(printed, 0, buffer->offset + 1);
         memcpy(printed, buffer->buffer, cjson_min(buffer->length, buffer->offset + 1));
         printed[buffer->offset] = '\0'; /* just to be sure */
 
@@ -1980,15 +1987,6 @@ static cJSON_bool add_item_to_array(cJSON *array, cJSON *item)
             suffix_object(child->prev, item);
             array->child->prev = item;
         }
-        else
-        {
-            while (child->next)
-            {
-                child = child->next;
-            }
-            suffix_object(child, item);
-            array->child->prev = item;
-        }
     }
 
     return true;
@@ -2576,6 +2574,7 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateIntArray(const int *numbers, int count)
         }
         p = n;
     }
+    a->child->prev = n;
 
     return a;
 }
@@ -2612,6 +2611,7 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateFloatArray(const float *numbers, int count)
         }
         p = n;
     }
+    a->child->prev = n;
 
     return a;
 }
@@ -2648,6 +2648,7 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateDoubleArray(const double *numbers, int count)
         }
         p = n;
     }
+    a->child->prev = n;
 
     return a;
 }
@@ -2684,6 +2685,7 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateStringArray(const char *const *strings, int co
         }
         p = n;
     }
+    a->child->prev = n;
 
     return a;
 }
@@ -2755,6 +2757,10 @@ CJSON_PUBLIC(cJSON *) cJSON_Duplicate(const cJSON *item, cJSON_bool recurse)
             next = newchild;
         }
         child = child->next;
+    }
+    if (newitem && newitem->child)
+    {
+        newitem->child->prev = newchild;
     }
 
     return newitem;

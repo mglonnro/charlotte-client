@@ -38,7 +38,10 @@ sigint_handler ()
 void
 alloc_buffer (uv_handle_t * handle, size_t suggested_size, uv_buf_t * buf)
 {
-    *buf = uv_buf_init ((char *) malloc (suggested_size), suggested_size);
+    char *mem = malloc (suggested_size);
+    memset (mem, 0, suggested_size);
+
+    *buf = uv_buf_init (mem, suggested_size);
 }
 
 void
@@ -49,13 +52,30 @@ read_stdin (uv_stream_t * stream, ssize_t nread, const uv_buf_t * buf)
 	  if (nread == UV_EOF)
 	    {
 		// end of file
+		fprintf (stderr, "Closing file!\n");
+		fflush (stderr);
 		uv_close ((uv_handle_t *) & stdin_pipe, NULL);
 	    }
       }
     else if (nread > 0)
       {
+#ifdef CHAR_DEBUG2
+	  fprintf (stderr, "r0");
+	  fflush (stderr);
+#endif
 	  addbuf (buf->base, nread);
+
+#ifdef CHAR_DEBUG
+	  fprintf (stderr, "\rr1-- ");
+	  fflush (stderr);
+#endif
+
 	  process_buffer ();
+
+#ifdef CHAR_DEBUG
+	  fprintf (stderr, " --r2");
+	  fflush (stderr);
+#endif
       }
 
     if (buf->base)
@@ -68,13 +88,29 @@ process_buffer ()
     char str[BUFSIZE], message[BUFSIZE], message_nosrc[BUFSIZE];
     char *line;
 
+#ifdef CHAR_DEBUG
+    fprintf (stderr, "p0");
+    fflush (stderr);
+#endif
+
     while ((line = buf_getline ()) != NULL)
       {
+
+#ifdef CHAR_DEBUG
+	  fprintf (stderr, "p1");
+	  fflush (stderr);
+#endif
+	  memset (str, 0, BUFSIZE);
 	  strcpy (str, line);
 	  memset (message, 0, BUFSIZE);
 	  memset (message_nosrc, 0, BUFSIZE);
 
 	  int hasdiff = parse_nmea (str, message, message_nosrc);
+
+#ifdef CHAR_DEBUG
+	  fprintf (stderr, "p2");
+	  fflush (stderr);
+#endif
 
 	  if (hasdiff)
 	    {
@@ -145,7 +181,7 @@ addbuf (char *buf, int len)
 
     if (len >= BUFFER_SIZE)
       {
-	  fprintf (stderr, "Dropping %d bytes\n", (len - BUFFER_SIZE));
+	  fprintf (stderr, "\nDropping %d bytes\n", (len - BUFFER_SIZE));
 	  memcpy (buffer, buf + (len - BUFFER_SIZE), BUFFER_SIZE);
 	  buffer[BUFFER_SIZE - 1] = 0;
       }

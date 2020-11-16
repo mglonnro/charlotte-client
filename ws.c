@@ -214,6 +214,12 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	lws_protocol_vh_priv_get (lws_get_vhost (wsi),
 				  lws_get_protocol (wsi));
 
+
+#ifdef CHAR_DEBUG
+    fprintf (stderr, "#");
+    fflush (stderr);
+#endif
+
     const struct msg *pmsg;
     char *reply;
     char message[MSGBUFSIZE];
@@ -422,7 +428,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	    {
 		lwsl_user (" (nothing in ring)\n");
 #ifdef CHAR_DEBUG
-		fprintf (stderr, "-");
+		fprintf (stderr, "0");
 		fflush (stderr);
 #endif
 		break;
@@ -515,7 +521,7 @@ ws_init (char *id, uv_loop_t * loop)
 
     strcpy (boat_id, id);
 
-    memset (&info, 0, sizeof info);
+    memset (&info, 0, sizeof (struct lws_context_creation_info));
 
     lwsl_user ("LWS minimal ws client\n");
 
@@ -539,11 +545,8 @@ ws_init (char *id, uv_loop_t * loop)
 #endif
 
     ssl_connection |= LCCSCF_ALLOW_SELFSIGNED;
-
     ssl_connection |= LCCSCF_ALLOW_INSECURE;
-
     ssl_connection |= LCCSCF_SKIP_SERVER_CERT_HOSTNAME_CHECK;
-
     ssl_connection |= LCCSCF_ALLOW_EXPIRED;
 
     info.fd_limit_per_thread = 10;
@@ -653,7 +656,7 @@ ws_write_client (char *buf, int len)
 	(struct per_vhost_data__minimal *) vhost;
     struct msg amsg;
 
-    if (!vhd->s_ring)
+    if (!vhd || !vhd->s_ring)
       {
 #ifdef CHAR_DEBUG2
 	  fprintf (stderr, "e1");

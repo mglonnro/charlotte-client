@@ -177,6 +177,12 @@ read_nmea_sources ()
 int
 parse_nmea (char *line, char *message, char *message_nosrc)
 {
+
+#ifdef CHAR_DEBUG
+    fprintf (stderr, "n0");
+    fflush (stderr);
+#endif
+
     cJSON *json = cJSON_Parse (line);
     if (json == NULL)
       {
@@ -200,6 +206,11 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 	  return 0;
       }
     cJSON *ais = NULL;
+
+#ifdef CHAR_DEBUG
+    fprintf (stderr, "n1");
+    fflush (stderr);
+#endif
 
     struct nmea_state newstate;
     memcpy (&newstate, &state, sizeof (state));
@@ -363,6 +374,12 @@ parse_nmea (char *line, char *message, char *message_nosrc)
     memcpy (&state, &newstate, sizeof (newstate));
     memcpy (&c_state, &c_newstate, sizeof (c_newstate));
     cJSON_Delete (json);
+
+#ifdef CHAR_DEBUG
+    fprintf (stderr, "n2");
+    fflush (stderr);
+#endif
+
     if (diff)
       {
 	  char *p = cJSON_Print (diff);
@@ -866,9 +883,9 @@ print_claim_state (struct claim_state *c)
 
     for (int i = 0; i < MAXDEVICES; i++)
       {
-	  fprintf (stderr, "Ddevice #%d: unique %s\n", i,
-		   c->devices[i].unique_number[0] ? c->devices[i].
-		   unique_number : "NULL");
+	  fprintf (stderr, "Device #%d: unique %s\n", i,
+		   c->devices[i].unique_number[0] ? c->
+		   devices[i].unique_number : "NULL");
       }
 }
 
