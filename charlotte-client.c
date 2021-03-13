@@ -114,6 +114,7 @@ process_buffer ()
 
 	  if (hasdiff)
 	    {
+		fprintf (stderr, ">>%s\n", message);
 #ifdef CHAR_DEBUG
 		fprintf (stderr, "1");
 		fflush (stderr);

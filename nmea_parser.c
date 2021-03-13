@@ -183,6 +183,7 @@ parse_nmea (char *line, char *message, char *message_nosrc)
     fflush (stderr);
 #endif
 
+
     cJSON *json = cJSON_Parse (line);
     if (json == NULL)
       {
@@ -352,6 +353,10 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 		diff = cJSON_CreateObject ();
 	    }
 	  cJSON *values = cJSON_GetObjectItemCaseSensitive (json, "fields");
+	  if (!values)
+	    {
+		fprintf (stderr, "no values\n");
+	    }
 	  int user_id = get_ais_user_id (json);
 	  if (user_id == -1)
 	    {
@@ -363,6 +368,7 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 	  sprintf (key, "%d", user_id);
 	  ais = cJSON_CreateObject ();
 	  char *v = cJSON_Print (values);
+
 	  cJSON *aisvalues = cJSON_Parse (v);
 	  if (aisvalues)
 	    {
@@ -884,8 +890,8 @@ print_claim_state (struct claim_state *c)
     for (int i = 0; i < MAXDEVICES; i++)
       {
 	  fprintf (stderr, "Device #%d: unique %s\n", i,
-		   c->devices[i].unique_number[0] ? c->
-		   devices[i].unique_number : "NULL");
+		   c->devices[i].unique_number[0] ? c->devices[i].
+		   unique_number : "NULL");
       }
 }
 

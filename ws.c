@@ -157,7 +157,7 @@ connect_client (lws_sorted_usec_list_t * sul)
     i.address = server_address;
 
     static char path[256];
-    sprintf (path, "/timescaledb/boat/%s/data", boat_id);
+    sprintf (path, "/api.beta/boat/%s/data", boat_id);
 
     i.path = path;
     i.host = i.address;
