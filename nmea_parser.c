@@ -188,7 +188,7 @@ parse_nmea (char *line, char *message, char *message_nosrc)
     if (json == NULL)
       {
 	  cJSON_Delete (json);
-	  fprintf (stderr, "Couldn't parse json '%s'\n", line);
+	  fprintf (stderr, "Couldn't parse json #1 '%s'\n", line);
 	  debug_count++;
 	  /*
 	   * if (debug_count == 3) { exit (1); }
@@ -199,7 +199,7 @@ parse_nmea (char *line, char *message, char *message_nosrc)
     if (pgn == NULL)
       {
 	  cJSON_Delete (json);
-	  fprintf (stderr, "Couldn't parse json '%s'\n", line);
+	  fprintf (stderr, "Couldn't parse json #2 '%s'\n", line);
 	  debug_count++;
 	  /*
 	   * if (debug_count == 3) { exit (1); }
@@ -524,6 +524,7 @@ diff_claim_values (cJSON * root, struct claim *old_arr,
 	  if (!found)
 	    {
 		char key[10];
+		memset (key, 0, 10);
 		sprintf (key, "%d", new_arr[n].src);
 		cJSON_AddStringToObject (src, key, new_arr[n].unique_number);
 		diff = 1;
@@ -890,14 +891,18 @@ print_claim_state (struct claim_state *c)
     for (int i = 0; i < MAXDEVICES; i++)
       {
 	  fprintf (stderr, "Device #%d: unique %s\n", i,
-		   c->devices[i].unique_number[0] ? c->devices[i].
-		   unique_number : "NULL");
+		   c->devices[i].unique_number[0] ? c->
+		   devices[i].unique_number : "NULL");
       }
 }
 
 int
 init_nmea_parser ()
 {
+    memset (&state, 0, sizeof (struct nmea_state));
+    memset (&sources, 0, sizeof (struct nmea_sources));
+    memset (&c_state, 0, sizeof (struct claim_state));
+
     FILE *infile;
     infile = fopen ("claim.state", "r");
     if (infile != NULL)
@@ -907,5 +912,6 @@ init_nmea_parser ()
       }
 
     print_claim_state (&c_state);
+
     return 1;
 }

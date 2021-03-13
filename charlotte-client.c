@@ -114,7 +114,6 @@ process_buffer ()
 
 	  if (hasdiff)
 	    {
-		fprintf (stderr, ">>%s\n", message);
 #ifdef CHAR_DEBUG
 		fprintf (stderr, "1");
 		fflush (stderr);
@@ -142,6 +141,9 @@ main (int argc, char **argv)
 
     signal (SIGPIPE, SIG_IGN);
     signal (SIGINT, sigint_handler);
+
+    /* init */
+    memset (buffer, 0, BUFFER_SIZE + 1);
 
     init_nmea_parser ();
     init_config ();		/* boat configuration, sails etc! */
@@ -184,7 +186,7 @@ addbuf (char *buf, int len)
       {
 	  fprintf (stderr, "\nDropping %d bytes\n", (len - BUFFER_SIZE));
 	  memcpy (buffer, buf + (len - BUFFER_SIZE), BUFFER_SIZE);
-	  buffer[BUFFER_SIZE - 1] = 0;
+	  buffer[BUFFER_SIZE] = 0;
       }
     else if ((len + cur_len + 1) > BUFFER_SIZE)
       {
