@@ -14,24 +14,15 @@
 #include <string.h>
 #include <signal.h>
 #include <uv.h>
+#include "cJSON.h"
 #include "ws.h"
+#include "config.h"
+#include "nmea_parser.h"
 
 /*
  * This represents your object that "contains" the client connection and has
  * the client connection bound to it
  */
-
-static struct my_conn
-{
-    lws_sorted_usec_list_t sul;	/* schedule connection retry */
-    struct lws *wsi;		/* related wsi if any */
-    uint16_t retry_count;	/* count of consequetive retries */
-    struct lws_ring *ring;
-    uint32_t tail;
-    char flow_controlled;
-    uint8_t completed:1;
-    uint8_t write_consume_pending:1;
-} mco;
 
 struct msg
 {
@@ -42,8 +33,89 @@ struct msg
     char final;
 };
 
-#define BOAT_ID_SIZE	50
+static struct my_conn
+{
+    lws_sorted_usec_list_t sul;	/* schedule connection retry */
+    struct lws *wsi;		/* related wsi if any */
+    uint16_t retry_count;	/* count of consequetive retries */
 
+    struct lws_ring *ring;
+    uint32_t tail;
+    char flow_controlled;
+    uint8_t completed:1;
+    uint8_t write_consume_pending:1;
+
+    struct per_session_data__minimal *pss_list;
+
+    struct msg amsg;		/* the one pending message... */
+    int current;		/* the current message number we are caching */
+} mco;
+
+/* one of these is created for each client connecting to us */
+
+struct per_session_data__minimal
+{
+    struct per_session_data__minimal *pss_list;
+    struct lws *wsi;
+    int last;			/* the last message number we sent */
+};
+
+int
+get_connected_count (struct per_session_data__minimal *pss_list)
+{
+    if (!pss_list)
+      {
+	  return 0;
+      }
+
+    int count = 1;
+    struct per_session_data__minimal *next = pss_list;
+
+    while (next->pss_list != NULL)
+      {
+	  count++;
+	  next = next->pss_list;
+      }
+
+    return count;
+}
+
+/* one of these is created for each vhost our protocol is used with */
+
+struct per_vhost_data__minimal
+{
+    struct lws_context *context;
+    struct lws_vhost *vhost;
+    const struct lws_protocols *protocol;
+
+    struct per_session_data__minimal *pss_list;	/* linked-list of live pss */
+
+    struct lws_ring *s_ring;
+    uint32_t tail;
+    char flow_controlled;
+    uint8_t completed:1;
+    uint8_t write_consume_pending:1;
+
+    struct msg amsg;		/* the one pending message... */
+    int current;		/* the current message number we are caching */
+};
+
+static struct per_vhost_data__minimal *vhost;
+
+void
+clear_lws_ring (struct per_vhost_data__minimal *vhd, struct lws_ring *ring)
+{
+
+    size_t count = lws_ring_get_count_waiting_elements (ring, &vhd->tail);
+    lws_ring_consume (ring, &vhd->tail, NULL, count);
+#ifdef CHAR_DEBUG2
+    fprintf (stderr, "C");
+    fflush (stderr);
+#endif
+    return;
+}
+
+#define BOAT_ID_SIZE	50
 static struct lws_context *context;
 static int interrupted, port = 443, ssl_connection = LCCSCF_USE_SSL;
 static const char *server_address = "community.nakedsailor.blog", *pro =
@@ -78,7 +150,6 @@ connect_client (lws_sorted_usec_list_t * sul)
     struct my_conn *mco = lws_container_of (sul, struct my_conn, sul);
     struct lws_client_connect_info i;
 
-
     memset (&i, 0, sizeof (i));
 
     i.context = context;
@@ -86,7 +157,7 @@ connect_client (lws_sorted_usec_list_t * sul)
     i.address = server_address;
 
     static char path[256];
-    sprintf (path, "/timescaledb/boat/%s/data", boat_id);
+    sprintf (path, "/api.beta/boat/%s/data", boat_id);
 
     i.path = path;
     i.host = i.address;
@@ -114,7 +185,7 @@ connect_client (lws_sorted_usec_list_t * sul)
       }
 }
 
-#define RING_DEPTH 1024
+#define RING_DEPTH 512
 
 static void
 __minimal_destroy_message (void *_msg)
@@ -126,16 +197,187 @@ __minimal_destroy_message (void *_msg)
     msg->len = 0;
 }
 
+#define MSGBUFSIZE 16384
+
 static int
 callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 		  void *user, void *in, size_t len)
 {
+    /* fprintf (stderr, "callback clien %d\n", reason); */
+
     struct my_conn *mco = (struct my_conn *) user;
+
+    struct per_session_data__minimal *pss =
+	(struct per_session_data__minimal *) user;
+    struct per_vhost_data__minimal *vhd =
+	(struct per_vhost_data__minimal *)
+	lws_protocol_vh_priv_get (lws_get_vhost (wsi),
+				  lws_get_protocol (wsi));
+
+
+#ifdef CHAR_DEBUG
+    fprintf (stderr, "#");
+    fflush (stderr);
+#endif
+
     const struct msg *pmsg;
+    char *reply;
+    char message[MSGBUFSIZE];
+
     int m, flags;
 
     switch (reason)
       {
+      case LWS_CALLBACK_PROTOCOL_INIT:
+	  vhd = lws_protocol_vh_priv_zalloc (lws_get_vhost (wsi),
+					     lws_get_protocol (wsi),
+					     sizeof (struct
+						     per_vhost_data__minimal));
+	  vhd->context = lws_get_context (wsi);
+	  vhd->protocol = lws_get_protocol (wsi);
+	  vhd->vhost = lws_get_vhost (wsi);
+	  vhd->s_ring = lws_ring_create (sizeof (struct msg), RING_DEPTH,
+					 __minimal_destroy_message);
+	  if (!vhd->s_ring)
+	      return 1;
+	  vhd->tail = 0;
+
+	  vhost = vhd;
+	  break;
+
+      case LWS_CALLBACK_ESTABLISHED:
+	  /* add ourselves to the list of live pss held in the vhd */
+	  lws_ll_fwd_insert (pss, pss_list, vhd->pss_list);
+	  pss->wsi = wsi;
+	  pss->last = vhd->current;
+
+	  fprintf (stderr, "Connected count: %d\n",
+		   get_connected_count (vhd->pss_list));
+
+	  /* Send config & state */
+	  memset (message, 0, MSGBUFSIZE);
+	  get_nmea_state (message);
+
+	  if (message[0])
+	    {
+		fprintf (stderr, "Sending state: %s\n", message);
+		ws_write_client (message, strlen (message) + 1);
+	    }
+
+	  cJSON *config = get_config_state ();
+	  char *p = cJSON_Print (config);
+	  trim_message (p);
+
+	  fprintf (stderr, "Sending config: %s\n", p);
+
+	  ws_write_client (p, strlen (p) + 1);
+	  free (p);
+	  cJSON_Delete (config);
+
+	  break;
+
+      case LWS_CALLBACK_CLOSED:
+	  /* remove our closing pss from the list of live pss */
+	  lws_ll_fwd_remove (struct per_session_data__minimal, pss_list,
+			     pss, vhd->pss_list);
+	  fprintf (stderr, "Connected count: %d\n",
+		   get_connected_count (vhd->pss_list));
+	  break;
+
+      case LWS_CALLBACK_SERVER_WRITEABLE:
+	  /*if (!vhd->amsg.payload)
+	     break;
+
+	     if (pss->last == vhd->current)
+	     break; */
+
+	  /* notice we allowed for LWS_PRE in the payload already */
+	  /* m = lws_write (wsi, ((unsigned char *) vhd->amsg.payload) +
+	     LWS_PRE, vhd->amsg.len, LWS_WRITE_TEXT);
+	     if (m < (int) vhd->amsg.len)
+	     {
+	     lwsl_err ("ERROR %d writing to ws\n", m);
+	     return -1;
+	     }
+
+	     pss->last = vhd->current; */
+
+#ifdef CHAR_DEBUG2
+	  fprintf (stderr, "w1");
+	  fflush (stderr);
+#endif
+
+	  if (vhd->write_consume_pending)
+	    {
+		/* perform the deferred fifo consume */
+		lws_ring_consume_single_tail (vhd->s_ring, &vhd->tail, 1);
+		vhd->write_consume_pending = 0;
+	    }
+	  pmsg = lws_ring_get_element (vhd->s_ring, &vhd->tail);
+	  if (!pmsg)
+	    {
+		lwsl_user (" (nothing in s_ring)\n");
+		break;
+	    }
+
+	  /* notice we allowed for LWS_PRE in the payload already */
+	  m = lws_write (wsi, ((unsigned char *) pmsg->payload) +
+			 LWS_PRE, pmsg->len, LWS_WRITE_TEXT);
+	  if (m < (int) pmsg->len)
+	    {
+		lwsl_err ("ERROR %d writing to ws socket\n", m);
+		return -1;
+	    }
+	  vhd->completed = 1;
+
+	  /*
+	   * Workaround deferred deflate in pmd extension by only consuming the
+	   * fifo entry when we are certain it has been fully deflated at the
+	   * next WRITABLE callback.  You only need this if you're using pmd.
+	   */
+	  vhd->write_consume_pending = 1;
+
+	  break;
+      case LWS_CALLBACK_RECEIVE:
+	  /* Inbound message from client */
+	  reply = process_inbound_message (in, len);
+
+	  /* Forward it to cloud */
+	  ws_write_cloud (in, len);
+
+	  /* Write processed reply if we have any */
+	  if (reply)
+	    {
+		ws_write_client (reply, strlen (reply) + 1);
+		free (reply);
+	    }
+	  break;
+
+	  if (vhd->amsg.payload)
+	      __minimal_destroy_message (&vhd->amsg);
+
+	  vhd->amsg.len = len;
+	  /* notice we over-allocate by LWS_PRE */
+	  vhd->amsg.payload = malloc (LWS_PRE + len);
+	  if (!vhd->amsg.payload)
+	    {
+		lwsl_user ("OOM: dropping\n");
+		break;
+	    }
+
+	  memcpy ((char *) vhd->amsg.payload + LWS_PRE, in, len);
+	  vhd->current++;
+
+	  /*
+	   * let everybody know we want to write something on them
+	   * as soon as they are ready
+	   */
+	  lws_start_foreach_llp (struct per_session_data__minimal **,
+				 ppss, vhd->pss_list)
+	  {
+	      lws_callback_on_writable ((*ppss)->wsi);
+	  } lws_end_foreach_llp (ppss, pss_list);
+	  break;
 
       case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
 	  lwsl_err ("CLIENT_CONNECTION_ERROR: %s\n",
@@ -149,7 +391,13 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	  break;
 
       case LWS_CALLBACK_CLIENT_RECEIVE:
-	  /* lwsl_hexdump_notice(in, len); */
+	  fprintf (stderr, "LWS_CALLBACK_CLIENT_RECEIVE\n");
+	  char *reply = process_inbound_message (in, len);
+	  if (reply)
+	    {
+		free (reply);
+	    }
+	  lwsl_hexdump_notice (in, len);
 	  break;
 
       case LWS_CALLBACK_CLIENT_ESTABLISHED:
@@ -180,7 +428,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	    {
 		lwsl_user (" (nothing in ring)\n");
 #ifdef CHAR_DEBUG
-		fprintf (stderr, "-");
+		fprintf (stderr, "0");
 		fflush (stderr);
 #endif
 		break;
@@ -261,7 +509,8 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 }
 
 static const struct lws_protocols protocols[] = {
-    {"lws-minimal-client", callback_minimal, 0, 0,},
+    {"lws-minimal-client", callback_minimal,
+     sizeof (struct per_session_data__minimal), 128, 0, NULL, 0},
     {NULL, NULL, 0, 0}
 };
 
@@ -272,13 +521,15 @@ ws_init (char *id, uv_loop_t * loop)
 
     strcpy (boat_id, id);
 
-    memset (&info, 0, sizeof info);
+    memset (&info, 0, sizeof (struct lws_context_creation_info));
 
     lwsl_user ("LWS minimal ws client\n");
 
     info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
     info.options |= LWS_SERVER_OPTION_LIBUV;
-    info.port = CONTEXT_PORT_NO_LISTEN;	/* we do not run any server */
+    info.options |=
+	LWS_SERVER_OPTION_HTTP_HEADERS_SECURITY_BEST_PRACTICES_ENFORCE;
+    info.port = 7681;
     info.protocols = protocols;
     info.foreign_loops = (void *[])
     {
@@ -294,11 +545,8 @@ ws_init (char *id, uv_loop_t * loop)
 #endif
 
     ssl_connection |= LCCSCF_ALLOW_SELFSIGNED;
-
     ssl_connection |= LCCSCF_ALLOW_INSECURE;
-
     ssl_connection |= LCCSCF_SKIP_SERVER_CERT_HOSTNAME_CHECK;
-
     ssl_connection |= LCCSCF_ALLOW_EXPIRED;
 
     info.fd_limit_per_thread = 10;
@@ -320,13 +568,20 @@ static int debug_flag = 0;
 int
 ws_write (char *buf, int len)
 {
+    int ret = ws_write_cloud (buf, len);
+    ret += ws_write_client (buf, len);
+    return ret;
+}
+
+int
+ws_write_cloud (char *buf, int len)
+{
     if (debug_flag)
       {
 #ifdef CHAR_DEBUG
 	  fprintf (stderr, "!1");
 	  fflush (stderr);
 #endif
-	  return 0;
       }
     struct my_conn *pss = (struct my_conn *) &mco;
     struct msg amsg;
@@ -383,20 +638,100 @@ ws_write (char *buf, int len)
      * If this is 0x0 we 'll get a seg fault. Happens when the connection is
      * / has closed.
      */
+
+    /* fprintf (stderr, "Asking for write callback: %s\n", buf);  */
+
     if (mco.ring)
       {
 	  lws_callback_on_writable (mco.wsi);
       }
-#ifdef CHAR_DEBUG
-    fprintf (stderr, "c");
-    fflush (stderr);
+
+    return 1;
+}
+
+int
+ws_write_client (char *buf, int len)
+{
+    struct per_vhost_data__minimal *vhd =
+	(struct per_vhost_data__minimal *) vhost;
+    struct msg amsg;
+
+    if (!vhd || !vhd->s_ring)
+      {
+#ifdef CHAR_DEBUG2
+	  fprintf (stderr, "e1");
+	  fflush (stderr);
 #endif
+	  return 0;
+      }
+
+    if (get_connected_count (vhd->pss_list) == 0)
+      {
+	  clear_lws_ring (vhd, vhd->s_ring);
+	  return 0;
+      }
+
+    int n = (int) lws_ring_get_count_free_elements (vhd->s_ring);
+    if (!n)
+      {
+#ifdef CHAR_DEBUG2
+	  fprintf (stderr, "e2");
+	  fflush (stderr);
+#endif
+	  lwsl_user ("dropping!\n");
+
+	  lws_start_foreach_llp (struct per_session_data__minimal **,
+				 ppss, vhd->pss_list)
+	  {
+	      lws_callback_on_writable ((*ppss)->wsi);
+	  } lws_end_foreach_llp (ppss, pss_list);
+
+	  return 0;
+      }
+    amsg.first = 1;
+    amsg.final = 1;
+    amsg.binary = 0;
+    amsg.len = len;
+    /* notice we over-allocate by LWS_PRE */
+    amsg.payload = malloc (LWS_PRE + len);
+    if (!amsg.payload)
+      {
+#ifdef CHAR_DEBUG2
+	  fprintf (stderr, "e3");
+	  fflush (stderr);
+#endif
+	  lwsl_user ("OOM: dropping\n");
+	  return 0;
+      }
+    memset (amsg.payload, 0, LWS_PRE + len);
+
+    memcpy ((char *) amsg.payload + LWS_PRE, buf, len);
+
+    if (!lws_ring_insert (vhd->s_ring, &amsg, 1))
+      {
+#ifdef CHAR_DEBUG2
+	  fprintf (stderr, "e4");
+	  fflush (stderr);
+#endif
+	  lwsl_user ("dropping!\n");
+	  __minimal_destroy_message (&amsg);
+	  return 0;
+      }
+
     /*
-     * fprintf (stderr, "Checking flow control");
-     * 
-     * if (!pss->flow_controlled && n < 3) { pss->flow_controlled = 1;
-     * lws_rx_flow_control (mco.wsi, 0); }
+     * let everybody know we want to write something on them
+     * as soon as they are ready
      */
+    int count = 0;
+    lws_start_foreach_llp (struct per_session_data__minimal **,
+			   ppss, vhd->pss_list)
+    {
+#ifdef CHAR_DEBUG2
+	fprintf (stderr, "c%d", count++);
+	fflush (stderr);
+#endif
+	lws_callback_on_writable ((*ppss)->wsi);
+    } lws_end_foreach_llp (ppss, pss_list);
 
     return 1;
 }

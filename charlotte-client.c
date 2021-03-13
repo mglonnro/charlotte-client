@@ -13,6 +13,7 @@
 #include <uv.h>
 #include "nmea_parser.h"
 #include "ws.h"
+#include "config.h"
 
 #define BUFSIZE 4096
 #define FULL_SYNC_INTERVAL 10
@@ -37,7 +38,10 @@ sigint_handler ()
 void
 alloc_buffer (uv_handle_t * handle, size_t suggested_size, uv_buf_t * buf)
 {
-    *buf = uv_buf_init ((char *) malloc (suggested_size), suggested_size);
+    char *mem = malloc (suggested_size);
+    memset (mem, 0, suggested_size);
+
+    *buf = uv_buf_init (mem, suggested_size);
 }
 
 void
@@ -48,13 +52,30 @@ read_stdin (uv_stream_t * stream, ssize_t nread, const uv_buf_t * buf)
 	  if (nread == UV_EOF)
 	    {
 		// end of file
+		fprintf (stderr, "Closing file!\n");
+		fflush (stderr);
 		uv_close ((uv_handle_t *) & stdin_pipe, NULL);
 	    }
       }
     else if (nread > 0)
       {
+#ifdef CHAR_DEBUG2
+	  fprintf (stderr, "r0");
+	  fflush (stderr);
+#endif
 	  addbuf (buf->base, nread);
+
+#ifdef CHAR_DEBUG
+	  fprintf (stderr, "\rr1-- ");
+	  fflush (stderr);
+#endif
+
 	  process_buffer ();
+
+#ifdef CHAR_DEBUG
+	  fprintf (stderr, " --r2");
+	  fflush (stderr);
+#endif
       }
 
     if (buf->base)
@@ -64,23 +85,42 @@ read_stdin (uv_stream_t * stream, ssize_t nread, const uv_buf_t * buf)
 void
 process_buffer ()
 {
-    char str[BUFSIZE], message[BUFSIZE];
+    char str[BUFSIZE], message[BUFSIZE], message_nosrc[BUFSIZE];
     char *line;
+
+#ifdef CHAR_DEBUG
+    fprintf (stderr, "p0");
+    fflush (stderr);
+#endif
 
     while ((line = buf_getline ()) != NULL)
       {
+
+#ifdef CHAR_DEBUG
+	  fprintf (stderr, "p1");
+	  fflush (stderr);
+#endif
+	  memset (str, 0, BUFSIZE);
 	  strcpy (str, line);
 	  memset (message, 0, BUFSIZE);
+	  memset (message_nosrc, 0, BUFSIZE);
 
-	  int hasdiff = parse_nmea (str, message);
+	  int hasdiff = parse_nmea (str, message, message_nosrc);
+
+#ifdef CHAR_DEBUG
+	  fprintf (stderr, "p2");
+	  fflush (stderr);
+#endif
 
 	  if (hasdiff)
 	    {
+		fprintf (stderr, ">>%s\n", message);
 #ifdef CHAR_DEBUG
 		fprintf (stderr, "1");
 		fflush (stderr);
 #endif
-		ws_write (message, strlen (message));
+		ws_write_cloud (message, strlen (message));
+		ws_write_client (message_nosrc, strlen (message_nosrc));
 	    }
       }
 }
@@ -88,11 +128,7 @@ process_buffer ()
 int
 main (int argc, char **argv)
 {
-    char str[BUFSIZE], message[BUFSIZE];
-    char boat_id[256];
     long last_sync_state;
-    long now;
-
 
     if (argc != 2)
       {
@@ -107,27 +143,24 @@ main (int argc, char **argv)
     signal (SIGPIPE, SIG_IGN);
     signal (SIGINT, sigint_handler);
 
-    memset (&str, 0, BUFSIZE);
-    memset (&message, 0, BUFSIZE);
-
-    strcpy (boat_id, argv[1]);
-
     init_nmea_parser ();
+    init_config ();		/* boat configuration, sails etc! */
+    read_nmea_sources ();	/* read nmea sources state */
 
     time (&last_sync_state);	/* Will maybe use later */
-
 
     uv_pipe_init (loop, &stdin_pipe, 0);
     uv_pipe_open (&stdin_pipe, 0);
     uv_read_start ((uv_stream_t *) & stdin_pipe, alloc_buffer, read_stdin);
     uv_run (loop, UV_RUN_DEFAULT);
 
+    fprintf (stderr, "Out of loop!");
+
     /*
      * time (&now); if ((now - last_sync_state) >= FULL_SYNC_INTERVAL) { if
      * (get_nmea_state (message)) { //printf("Sending full state: %s\n",
      * message); //ws_send(message); } time (&last_sync_state); }
      */
-
 
     ws_destroy ();
     uv_loop_close (loop);
@@ -149,7 +182,7 @@ addbuf (char *buf, int len)
 
     if (len >= BUFFER_SIZE)
       {
-	  fprintf (stderr, "Dropping %d bytes\n", (len - BUFFER_SIZE));
+	  fprintf (stderr, "\nDropping %d bytes\n", (len - BUFFER_SIZE));
 	  memcpy (buffer, buf + (len - BUFFER_SIZE), BUFFER_SIZE);
 	  buffer[BUFFER_SIZE - 1] = 0;
       }
@@ -165,6 +198,8 @@ addbuf (char *buf, int len)
 	  buffer[strlen (buffer) + len] = 0;
 	  return 0;
       }
+
+    return 0;			/* unreachable, but warning  still */
 }
 
 char *

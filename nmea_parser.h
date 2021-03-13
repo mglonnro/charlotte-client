@@ -5,6 +5,7 @@ struct nmea_value {
         int             src;
 };
 
+
 #define MAXSOURCES      5
 
 struct nmea_state {
@@ -24,6 +25,14 @@ struct nmea_state {
 };
 
 #define DLENGTH 256
+
+struct nmea_sources {
+	char	position[DLENGTH];
+	char	attitude[DLENGTH];
+	char	heading[DLENGTH];
+	char	aws[DLENGTH];
+	char	awa[DLENGTH];
+};
 
 struct claim {
         int     src;
@@ -48,7 +57,8 @@ struct claim_state {
         struct claim    claims[MAXCLAIMS];
 };
 
-int	parse_nmea(char *line, char *message);
+int	parse_nmea(char *line, char *message, char *message_nosrc);
+cJSON * nmea_strip_sources(cJSON *json);
 int     init_nmea_parser();
 
 int             update_nmea_value(cJSON * json, struct nmea_value *arr, char *fieldname);
@@ -70,3 +80,10 @@ int
 update_nmea_device(cJSON * json, char *unique_number, struct device *arr);
 int diff_claim_values(cJSON *root, struct claim *old_arr, struct claim *new_arr, char *fieldname);
 int diff_device_values(cJSON *root, struct device *old_arr, struct device *new_arr, char *fieldname);
+char *process_inbound_message(char *m, int len);
+void
+set_nmea_sources (cJSON * s);
+void
+save_nmea_sources ();
+void
+print_nmea_sources ();
