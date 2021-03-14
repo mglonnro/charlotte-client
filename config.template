@@ -1,0 +1,8 @@
+BOATID=<replace with your Boat ID>
+APIKEY=<replace with your boat's API Key>
+
+# Directory to store the captured NMEA data before sending it to the cloud.
+DATA=./data
+
+# Directory to store log and error files from the client. Leave empty to disable logging.
+LOGS=./logs
