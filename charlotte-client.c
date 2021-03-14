@@ -29,10 +29,13 @@ static uv_pipe_t stdin_pipe;
 #define BUFFER_SIZE	16384
 static char buffer[BUFFER_SIZE + 1];	/* include space for null */
 
+uv_loop_t *loop;
+
 void
 sigint_handler ()
 {
     interrupted = 1;
+    uv_stop (loop);
 }
 
 void
@@ -124,6 +127,7 @@ process_buffer ()
       }
 }
 
+
 int
 main (int argc, char **argv)
 {
@@ -136,7 +140,7 @@ main (int argc, char **argv)
       }
     fprintf (stderr, "charlotte-client v%s\n", VERSION);
 
-    uv_loop_t *loop = uv_default_loop ();
+    loop = uv_default_loop ();
     ws_init (argv[1], loop);
 
     signal (SIGPIPE, SIG_IGN);

@@ -318,7 +318,6 @@ parse_nmea (char *line, char *message, char *message_nosrc)
       }
     else if (pgn->valueint == 126996)
       {
-	  printf ("Device data a coming!\n");
 	  char unique_number[DLENGTH];
 	  int found = get_unique_number (src, &c_newstate, unique_number);
 	  if (found)
@@ -891,8 +890,8 @@ print_claim_state (struct claim_state *c)
     for (int i = 0; i < MAXDEVICES; i++)
       {
 	  fprintf (stderr, "Device #%d: unique %s\n", i,
-		   c->devices[i].unique_number[0] ? c->
-		   devices[i].unique_number : "NULL");
+		   c->devices[i].unique_number[0] ? c->devices[i].
+		   unique_number : "NULL");
       }
 }
 
@@ -910,8 +909,6 @@ init_nmea_parser ()
 	  fread (&c_state, sizeof (struct claim_state), 1, infile);
 	  fclose (infile);
       }
-
-    print_claim_state (&c_state);
 
     return 1;
 }
