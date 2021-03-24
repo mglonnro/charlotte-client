@@ -14,7 +14,9 @@ sudo apt-get update
 sudo apt-get install charlotte
 ```
 
-2. Fill in your boat ID and API key in /etc/charlotte.conf.
+2. Fill in your boat ID and API key in `/etc/charlotte.conf`.
+
+- To get the ID and the key, create a boat on https://charlotte.lc
 
 3. Start the service 
 
