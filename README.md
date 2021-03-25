@@ -1,4 +1,20 @@
-# Charlotte Client
+# Charlotte - your digital crew member
+
+[<img width="400" alt="Mapbox" src="https://storage.googleapis.com/charlotte-public/og_image_default.png">](https://beta.charlotte.lc/)
+
+Charlotte is a system for gathering, storing and analyzing NMEA data (this is data from marine sensors) in the cloud. 
+
+The system consists of the following components:
+
+1. A local device (i.e. Raspberry PI) that is physically connected to the NMEA network to recording data. Whenever the device is connected to the internet, it can also a) live stream real-time data to the cloud, and b) upload previously recorded data for visualization and analytics.
+2. A cloud infrastructure to store the data and prepare/load it for analytics (Google Cloud Storage, Google Compute Engine, TimescaleDB).
+3. A web UI to access the processed data (https://charlotte.lc)
+
+`charlotte-client` is the component responsible for real-time data stream between the local device and the cloud. The binary distribution bundle below includes all the other components as well: 
+
+- `actisense-serial` from the CANboat project (Apache 2.0 License, (c) Kees Verruijt), see more: https://github.com/canboat/canboat
+- `analyzer` from the CANboat project (Apache 2.0 License, (c) Kees Verruijt), see more: https://github.com/canboat/canboat
+- `charlotte-logger` for recording and uploading all the logged data (the "black box" functionality), see more: https://github.com/mglonnro/charlotte-logger
 
 ## Installation
 
@@ -38,22 +54,14 @@ the following binaries with their separate and individual licenses:
 ### analyzer, actisense-serial
 https://github.com/canboat/canboat
 
-(C) 2009-2015, Kees Verruijt, Harlingen, The Netherlands.
+(C) 2009-2021, Kees Verruijt, Harlingen, The Netherlands.
 
 This file is part of CANboat.
 
-CANboat is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
 
-CANboat is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with CANboat.  If not, see <http://www.gnu.org/licenses/>.
+http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 
 ### libcurl
 https://curl.haxx.se/docs/copyright.html
