@@ -6,7 +6,7 @@ Charlotte is a system for gathering, storing and analyzing NMEA data (data from 
 
 The system consists of the following components:
 
-1. A local device (i.e. Raspberry PI) that is physically connected to the NMEA network to recording data. Whenever the device is connected to the internet, it can also a) live stream real-time data to the cloud, and b) upload previously recorded data for visualization and analytics.
+1. A local device (i.e. Raspberry PI) that is physically connected to the NMEA network and records *all* the data on the NMEA network. Whenever the device is connected to the internet, it can also a) *live stream real-time data* to the cloud, and b) *upload previously recorded data* for visualization and analytics.
 2. A cloud infrastructure to store the data and prepare/load it for analytics (Google Cloud Storage, Google Compute Engine, TimescaleDB).
 3. A web UI to access the processed data (https://charlotte.lc)
 
