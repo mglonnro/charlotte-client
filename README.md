@@ -6,7 +6,7 @@ Charlotte is a system for gathering, storing and analyzing NMEA data (data from 
 
 The system consists of the following components:
 
-1. A local device (i.e. Raspberry PI) that is physically connected to the NMEA network and records *all* the data it sees. Whenever the local device is connected to the internet, it can also a) *live stream real-time data* to the cloud, and b) *upload previously recorded data* for visualization and analytics.
+1. A local device (i.e. Raspberry PI) that is physically connected to the NMEA network and records *all* the data it sees. Whenever the local device is connected to the internet, it can also a) *live stream real-time data* to the cloud, and b) *upload previously recorded data* for visualization and analytics. (See the **Hardware Example** section below for more details.)
 2. A cloud infrastructure to store the data and prepare+load it for analytics (implemented using Google Cloud Storage, Google Compute Engine, TimescaleDB).
 3. A web UI to access the processed data (https://charlotte.lc)
 
@@ -81,4 +81,16 @@ Except as contained in this notice, the name of a copyright holder shall not be 
 ### libwebsockets.org
 https://libwebsockets.org/
 MIT License
+
+# Hardware Example
+
+Here is a more detailed list of what components may be used to record the NMEA data (the *local device*): 
+
+1. A Raspberry Pi 3 Model B+ or Pi 4, with a case. 
+2. A step-down converter/regulator to get good 12V/24V => 5V power from the boat to the Raspberry. This one can be plugged into the boat's 12V DC system with normal wires, and provides an USB connector for the Raspberry power cable: https://www.amazon.com/Converter-DROK-Regulator-Inverter-Transformer/dp/B01NALDSJ0
+3. From the step-converter to the Raspberry a _thick and short_ standard USB cable (the Raspberry is picky if the voltage drops).
+4. A Yacht Devices USB-NMEA2000 gateway (with USB male and NMEA2000 Micro Male) that will be connected between the Raspberry and the NMEA network
+https://www.yachtd.com/products/usb_gateway.html
+5. A suitable NMEA2000 Micro-C cable to connect the USB-NMEA gateway to your boat's network. 
+6. A Wifi/internet access point that the Raspberry can connect to a. (I am using a Huawei E5577S that I can plug into my boat's USB charging socket for constant power and 24/7 data collection: https://consumer.huawei.com/sg/support/routers/e5577s/.)
 
