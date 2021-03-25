@@ -30,17 +30,17 @@ sudo apt-get update
 sudo apt-get install charlotte
 ```
 
-2. Fill in your boat ID and API key in `/etc/charlotte.conf`.
+2. Register your boat on https://charlotte.lc and get your `Boat ID` and `API Key`. 
 
-- To get the ID and the key, create a boat on https://charlotte.lc
+4. Edit `/etc/charlotte.conf` and add your `Boat ID` and `API Key`.
 
-3. Start the service 
+5. Start the service 
 
 ```
 sudo systemctl start charlotte
 ```
 
-4. Enable automatic start at boot
+6. Enable automatic start at boot
 
 ```
 sudo systemctl enable charlotte
