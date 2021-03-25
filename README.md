@@ -6,11 +6,11 @@ Charlotte is a system for gathering, storing and analyzing NMEA data (data from 
 
 The system consists of the following components:
 
-1. A local device (i.e. Raspberry PI) that is physically connected to the NMEA network and records *all* the data on the NMEA network. Whenever the device is connected to the internet, it can also a) *live stream real-time data* to the cloud, and b) *upload previously recorded data* for visualization and analytics.
-2. A cloud infrastructure to store the data and prepare/load it for analytics (Google Cloud Storage, Google Compute Engine, TimescaleDB).
+1. A local device (i.e. Raspberry PI) that is physically connected to the NMEA network and records *all* the data it sees. Whenever the local device is connected to the internet, it can also a) *live stream real-time data* to the cloud, and b) *upload previously recorded data* for visualization and analytics.
+2. A cloud infrastructure to store the data and prepare+load it for analytics (implemented using Google Cloud Storage, Google Compute Engine, TimescaleDB).
 3. A web UI to access the processed data (https://charlotte.lc)
 
-`charlotte-client` is the component responsible for real-time data stream between the local device and the cloud. The binary distribution bundle below includes all the other components as well: 
+`charlotte-client` is the component responsible for the real-time data stream between the local device and the cloud. The binary distribution bundle below includes all the other components as well: 
 
 - `actisense-serial` from the CANboat project (Apache 2.0 License, (c) Kees Verruijt), see more: https://github.com/canboat/canboat
 - `analyzer` from the CANboat project (Apache 2.0 License, (c) Kees Verruijt), see more: https://github.com/canboat/canboat
