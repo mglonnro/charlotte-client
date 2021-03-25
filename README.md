@@ -15,7 +15,7 @@ The binary distribution bundle below includes all the software components of the
 - `actisense-serial` from the CANboat project (Apache 2.0 License, (c) Kees Verruijt), see more: https://github.com/canboat/canboat
 - `analyzer` from the CANboat project (Apache 2.0 License, (c) Kees Verruijt), see more: https://github.com/canboat/canboat
 - `charlotte-logger` for recording and uploading all the logged data (the "black box" functionality), see more: https://github.com/mglonnro/charlotte-logger
-- `charlotte-client` for establishing the real-time data stream between the local device and the cloud, see more: https://github.com/mglonnro/charlotte-client
+- `charlotte-client` for establishing the real-time data stream between the local device and the cloud, see more: see more: https://github.com/mglonnro/charlotte-client
 
 ## Installation
 
@@ -61,7 +61,8 @@ This file is part of CANboat.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
 
-http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 
 ### libcurl
