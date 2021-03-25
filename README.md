@@ -15,7 +15,7 @@ The binary distribution bundle below includes all the software components of the
 - `actisense-serial` from the CANboat project (Apache 2.0 License, (c) Kees Verruijt), see more: https://github.com/canboat/canboat
 - `analyzer` from the CANboat project (Apache 2.0 License, (c) Kees Verruijt), see more: https://github.com/canboat/canboat
 - `charlotte-logger` for recording and uploading all the logged data (the "black box" functionality), see more: https://github.com/mglonnro/charlotte-logger
-- `charlotte-client` for establishing the real-time data stream between the local device and the cloud.
+- `charlotte-client` for establishing the real-time data stream between the local device and the cloud, see more: https://github.com/mglonnro/charlotte-client
 
 ## Installation
 
