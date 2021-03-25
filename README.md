@@ -1,4 +1,4 @@
-# Charlotte - your digital crew member
+# Charlotte
 
 [<img width="400" alt="Mapbox" src="https://storage.googleapis.com/charlotte-public/og_image_default.png">](https://beta.charlotte.lc/)
 
