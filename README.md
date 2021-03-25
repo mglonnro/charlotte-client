@@ -2,7 +2,7 @@
 
 [<img width="400" alt="Mapbox" src="https://storage.googleapis.com/charlotte-public/og_image_default.png">](https://beta.charlotte.lc/)
 
-Charlotte is a system for gathering, storing and analyzing NMEA data (this is data from marine sensors) in the cloud. 
+Charlotte is a system for gathering, storing and analyzing NMEA data (data from marine sensors) in the cloud. 
 
 The system consists of the following components:
 
