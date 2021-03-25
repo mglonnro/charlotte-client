@@ -10,11 +10,12 @@ The system consists of the following components:
 2. A cloud infrastructure to store the data and prepare+load it for analytics (implemented using Google Cloud Storage, Google Compute Engine, TimescaleDB).
 3. A web UI to access the processed data (https://charlotte.lc)
 
-`charlotte-client` is the component responsible for the real-time data stream between the local device and the cloud. The binary distribution bundle below includes all the other components as well: 
+The binary distribution bundle below includes all the software components of the system: 
 
 - `actisense-serial` from the CANboat project (Apache 2.0 License, (c) Kees Verruijt), see more: https://github.com/canboat/canboat
 - `analyzer` from the CANboat project (Apache 2.0 License, (c) Kees Verruijt), see more: https://github.com/canboat/canboat
 - `charlotte-logger` for recording and uploading all the logged data (the "black box" functionality), see more: https://github.com/mglonnro/charlotte-logger
+- `charlotte-client` for establishing the real-time data stream between the local device and the cloud.
 
 ## Installation
 
