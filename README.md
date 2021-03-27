@@ -4,6 +4,10 @@
 
 Charlotte is a system for gathering, storing and analyzing NMEA data (data from marine sensors) in the cloud. 
 
+DEMO: [Latest live data from s/y Carlotte](https://charlotte.lc/boats/2zGrCQC2X9X2LbkzMhFm)
+DEMO: [A trip from Hel, Poland to Klaipėda, Lithuania](https://charlotte.lc/boats/2zGrCQC2X9X2LbkzMhFm/trips/ZhYjSI2dVcXNPgcw80E5)
+SEE ALO: [A blog post with some UI tutorial videos](https://nakedsailor.blog/2021/03/18/charlotte-your-digital-crew-member/)
+
 The system consists of the following components:
 
 1. A local device (i.e. Raspberry PI) that is physically connected to the NMEA network and records *all* the data it sees. Whenever the local device is connected to the internet, it can also a) *live stream real-time data* to the cloud, and b) *upload previously recorded data* for visualization and analytics. (See the **Hardware Example** section below for more details.)
