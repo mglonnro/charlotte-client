@@ -127,47 +127,57 @@ process_buffer ()
       }
 }
 
+#define STRLEN	256
 
 int
 main (int argc, char **argv)
 {
     long last_sync_state;
+    int n2k_timesync = 0;
 
-    if (argc != 2)
-      {
-	  fprintf (stderr, "usage: %s <boatId>\n", argv[0]);
-	  exit (1);
-      }
     fprintf (stderr, "charlotte-client v%s\n", VERSION);
 
-    loop = uv_default_loop ();
-    ws_init (argv[1], loop);
+    if (argc < 2 || (argc == 3 && strcmp (argv[1], "--synctime")))
+      {
+	  fprintf (stderr, "usage: %s [--synctime] <BoatId>\n", argv[0]);
+	  exit (1);
+      }
 
+    char boatId[STRLEN];
+    memset (boatId, 0, STRLEN);
+    if (argc == 3 && !strcmp (argv[1], "--synctime"))
+      {
+	  n2k_timesync = 1;
+	  fprintf (stderr, "Time sync with NMEA data enabled.\n");
+	  strcpy (boatId, argv[2]);
+      }
+    else
+      {
+	  strcpy (boatId, argv[1]);
+      }
+
+    fprintf (stderr, "Starting loop with BoatID '%s'\n", boatId);
+
+    loop = uv_default_loop ();
+    ws_init (boatId, loop);
     signal (SIGPIPE, SIG_IGN);
     signal (SIGINT, sigint_handler);
-
     /* init */
     memset (buffer, 0, BUFFER_SIZE + 1);
-
-    init_nmea_parser ();
+    init_nmea_parser (n2k_timesync);
     init_config ();		/* boat configuration, sails etc! */
     read_nmea_sources ();	/* read nmea sources state */
-
     time (&last_sync_state);	/* Will maybe use later */
-
     uv_pipe_init (loop, &stdin_pipe, 0);
     uv_pipe_open (&stdin_pipe, 0);
     uv_read_start ((uv_stream_t *) & stdin_pipe, alloc_buffer, read_stdin);
     uv_run (loop, UV_RUN_DEFAULT);
-
     fprintf (stderr, "Out of loop!");
-
     /*
      * time (&now); if ((now - last_sync_state) >= FULL_SYNC_INTERVAL) { if
      * (get_nmea_state (message)) { //printf("Sending full state: %s\n",
      * message); //ws_send(message); } time (&last_sync_state); }
      */
-
     ws_destroy ();
     uv_loop_close (loop);
 }
@@ -185,7 +195,6 @@ addbuf (char *buf, int len)
 	  return 0;
       }
     int cur_len = strlen (buffer);
-
     if (len >= BUFFER_SIZE)
       {
 	  fprintf (stderr, "\nDropping %d bytes\n", (len - BUFFER_SIZE));
@@ -212,14 +221,11 @@ char *
 buf_getline ()
 {
     static char ret[BUFFER_SIZE];
-
     memset (ret, 0, BUFFER_SIZE);
     int line_found = 0, pos = 0;
-
     for (int i = 0; i < BUFFER_SIZE && buffer[i]; i++)
       {
 	  char c = buffer[i];
-
 	  if (c == '\n' || c == '\r')
 	    {
 		line_found = 1;
@@ -243,8 +249,6 @@ buf_getline ()
 	  //Remove found stuff from beginning of buffer
 	  memcpy (buffer, buffer + pos, BUFFER_SIZE - pos);
 	  memset (buffer + (BUFFER_SIZE - pos), 0, pos);
-
-
 	  if (strlen (ret))
 	    {
 		return ret;

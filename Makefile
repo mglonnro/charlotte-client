@@ -5,7 +5,7 @@ TARGETS=$(TARGET)
 OBJS=charlotte-client.o nmea_parser.o cJSON.o ws.o epoch.o config.o
 STATICLIBS=/usr/local/lib/libwebsockets.a /usr/local/lib/libcurl.a /usr/local/lib/libuv.a
 LDFLAGS=-lssl -lcrypto
-VER=0.0.12
+VER=1.1
 CFLAGS=-g -Wall -ldl -lpthread -DVERSION=\"$(VER)\" #-DCHAR_DEBUG=1 #-DCHAR_DEBUG2=1 #-DCHAR_DEBUG=1
 all: $(TARGET)
 
@@ -41,7 +41,7 @@ clean:
 PKGFILE=charlotte-client-$(VER).zip
 pkg:
 	strip charlotte-client charlotte-logger
-	cp config.template install.sh start.sh stop.sh charlotte-client charlotte-logger actisense-serial analyzer package/charlotte-client		
+	cp LICENSE config.template install.sh start.sh stop.sh purge.sh charlotte-client charlotte-logger actisense-serial analyzer package/charlotte-client		
 	rm -f package/$(PKGFILE)
 	cd package && zip -r $(PKGFILE) charlotte-client/* 
 	cp package/$(PKGFILE) /tmp

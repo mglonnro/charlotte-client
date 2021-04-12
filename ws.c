@@ -157,7 +157,7 @@ connect_client (lws_sorted_usec_list_t * sul)
     i.address = server_address;
 
     static char path[256];
-    sprintf (path, "/api.beta/boat/%s/data", boat_id);
+    sprintf (path, "/api/boat/%s/data", boat_id);
 
     i.path = path;
     i.host = i.address;
@@ -722,7 +722,9 @@ ws_write_client (char *buf, int len)
      * let everybody know we want to write something on them
      * as soon as they are ready
      */
+#ifdef CHAR_DEBUG2
     int count = 0;
+#endif
     lws_start_foreach_llp (struct per_session_data__minimal **,
 			   ppss, vhd->pss_list)
     {

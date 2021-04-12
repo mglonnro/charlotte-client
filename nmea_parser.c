@@ -1,6 +1,10 @@
 #include <stdio.h>
+#include <errno.h>
 #include <string.h>
 #include <stdlib.h>
+#define __USE_XOPEN
+#include <time.h>
+#include <sys/time.h>
 #include "cJSON.h"
 #include "nmea_parser.h"
 #include "config.h"
@@ -10,6 +14,7 @@ struct nmea_sources sources;
 struct claim_state c_state;
 
 int debug_count = 0;
+int n2k_synctime = 0;
 
 int
 get_nmea_state (char *message)
@@ -236,6 +241,61 @@ parse_nmea (char *line, char *message, char *message_nosrc)
     memset (un, 0, DLENGTH);
     int src = get_src (json);
     get_unique_number (src, &c_newstate, un);
+
+    // sync time
+    if (pgn->valueint == 126992 && n2k_synctime)
+      {
+	  char *n2k_date = get_field_value_string (json, "Date");
+	  char *n2k_time = get_field_value_string (json, "Time");
+
+	  if (n2k_date && n2k_time)
+	    {
+
+		struct tm current;
+		memset (&current, 0, sizeof (struct tm));
+		char tmp_date[DLENGTH];
+		memset (tmp_date, 0, DLENGTH);
+
+		sprintf (tmp_date, "%s %s", n2k_date, n2k_time);
+		if (strptime (tmp_date, "%Y.%m.%d %H:%M:%S", &current) ==
+		    NULL)
+		  {
+		      fprintf (stderr, "Failed to strptime it!");
+		  }
+		else
+		  {
+		      time_t now;
+		      time (&now);
+		      time_t t = mktime (&current);
+
+		      // allow for 5s drift
+		      if (labs (now - t) > 5)
+			{
+			    fprintf (stderr, "Found time %s %s\n", n2k_date,
+				     n2k_time);
+			    fprintf (stderr,
+				     "Attempting to set time since drift: %ld\n",
+				     labs (now - t));
+
+			    struct timeval tv;
+
+			    tv.tv_sec = t;
+			    tv.tv_usec = 0;
+			    if (settimeofday (&tv, NULL) == 0)
+			      {
+				  fprintf (stderr, "Time set OK.\n");
+				  system ("hwclock --systohc");
+			      }
+			    else
+			      {
+				  fprintf (stderr, "Couldn't set time: %s\n",
+					   strerror (errno));
+			      }
+			}
+
+		  }
+	    }
+      }
 
     if (pgn->valueint == 127250)
       {
@@ -890,14 +950,16 @@ print_claim_state (struct claim_state *c)
     for (int i = 0; i < MAXDEVICES; i++)
       {
 	  fprintf (stderr, "Device #%d: unique %s\n", i,
-		   c->devices[i].unique_number[0] ? c->devices[i].
-		   unique_number : "NULL");
+		   c->devices[i].unique_number[0] ? c->
+		   devices[i].unique_number : "NULL");
       }
 }
 
 int
-init_nmea_parser ()
+init_nmea_parser (int synctime)
 {
+    n2k_synctime = synctime;
+
     memset (&state, 0, sizeof (struct nmea_state));
     memset (&sources, 0, sizeof (struct nmea_sources));
     memset (&c_state, 0, sizeof (struct claim_state));
