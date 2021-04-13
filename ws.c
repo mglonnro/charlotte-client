@@ -122,6 +122,8 @@ static const char *server_address = "community.nakedsailor.blog", *pro =
     "charlotte-data";
 static char boat_id[BOAT_ID_SIZE];
 
+#define CLIENT_MSG_BUFFER	32768
+static char receive_message[CLIENT_MSG_BUFFER];
 
 /*
  * The retry and backoff policy we want to use for our client connections
@@ -392,12 +394,37 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 
       case LWS_CALLBACK_CLIENT_RECEIVE:
 	  fprintf (stderr, "LWS_CALLBACK_CLIENT_RECEIVE\n");
-	  char *reply = process_inbound_message (in, len);
-	  if (reply)
+
+	  if (strlen (receive_message) + len + 1 > CLIENT_MSG_BUFFER)
 	    {
-		free (reply);
+		fprintf (stderr, "buffer overrun, dropping %d bytes\n", len);
 	    }
-	  lwsl_hexdump_notice (in, len);
+	  else
+	    {
+		memcpy (receive_message + strlen (receive_message), in, len);
+		receive_message[strlen (receive_message) + len] = 0;
+	    }
+
+	  if (!lws_remaining_packet_payload (wsi))
+	    {
+		char *reply = process_inbound_message (receive_message,
+						       strlen
+						       (receive_message));
+		if (reply)
+		  {
+		      free (reply);
+		  }
+		memset (receive_message, 0, CLIENT_MSG_BUFFER);
+		fprintf (stderr, "processed:\n");
+		lwsl_hexdump_notice (in, len);
+	    }
+	  else
+	    {
+
+		fprintf (stderr, "more to come:\n");
+		lwsl_hexdump_notice (in, len);
+	    }
+
 	  break;
 
       case LWS_CALLBACK_CLIENT_ESTABLISHED:
