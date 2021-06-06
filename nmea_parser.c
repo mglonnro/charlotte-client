@@ -266,7 +266,7 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 		  {
 		      time_t now;
 		      time (&now);
-		      time_t t = mktime (&current);
+		      time_t t = timegm (&current);
 
 		      // allow for 5s drift
 		      if (labs (now - t) > 5)
@@ -367,13 +367,7 @@ parse_nmea (char *line, char *message, char *message_nosrc)
       }
     else if (pgn->valueint == 60928)
       {
-	  //printf("Got claim for src: %d\n", get_src(json));
 	  update_nmea_claim (json, c_newstate.claims);
-	  /*
-	   * printf("CLAIM TABLE:\n"); for (int x = 0; x < MAXCLAIMS; x++) { if
-	   * (c_newstate.claims[x].src != 0) { printf("  SRC %d => %s\n",
-	   * c_newstate.claims[x].src, c_newstate.claims[x].unique_number); } }
-	   */
 	  save_state (&c_newstate);
       }
     else if (pgn->valueint == 126996)
@@ -382,22 +376,24 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 	  int found = get_unique_number (src, &c_newstate, unique_number);
 	  if (found)
 	    {
-		printf ("Updating device with unique number %s\n",
-			unique_number);
+		fprintf (stderr, "Updating device with unique number %s\n",
+			 unique_number);
 		update_nmea_device (json, unique_number, c_newstate.devices);
 	    }
 	  else
 	    {
-		printf ("Got device but no unique number for src: %d\n", src);
+		fprintf (stderr,
+			 "Got device but no unique number for src: %d\n",
+			 src);
 	    }
-	  printf ("DEVICE TABLE:\n");
+	  fprintf (stderr, "DEVICE TABLE:\n");
 	  for (int x = 0; x < MAXDEVICES; x++)
 	    {
 		if (c_newstate.devices[x].isactive)
 		  {
-		      printf ("  DEVICES %s => %s\n",
-			      c_newstate.devices[x].unique_number,
-			      c_newstate.devices[x].model_id);
+		      fprintf (stderr, "  DEVICES %s => %s\n",
+			       c_newstate.devices[x].unique_number,
+			       c_newstate.devices[x].model_id);
 		  }
 	    }
 
@@ -827,28 +823,24 @@ update_nmea_device (cJSON * json, char *unique_number, struct device *arr)
 				  strcpy (arr[x].model_id,
 					  model_id->valuestring);
 			      }
-			    printf ("Adding! 2\n");
 			    if (cJSON_IsString (model_version)
 				&& model_version->valuestring != NULL)
 			      {
 				  strcpy (arr[x].model_version,
 					  model_version->valuestring);
 			      }
-			    printf ("Adding! 2\n");
 			    if (cJSON_IsString (software_version_code)
 				&& software_version_code->valuestring != NULL)
 			      {
 				  strcpy (arr[x].software_version_code,
 					  software_version_code->valuestring);
 			      }
-			    printf ("Adding! 2\n");
 			    if (cJSON_IsString (model_serial_code)
 				&& model_serial_code->valuestring != NULL)
 			      {
 				  strcpy (arr[x].model_serial_code,
 					  model_serial_code->valuestring);
 			      }
-			    printf ("Adding! 2\n");
 			    return 1;
 			}
 		  }
