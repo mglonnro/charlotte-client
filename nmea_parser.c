@@ -7,7 +7,10 @@
 #include <sys/time.h>
 #include "cJSON.h"
 #include "nmea_parser.h"
+#include "nmea_creator.h"
 #include "config.h"
+#include "calibration.h"
+#include "truewind.h"
 
 struct nmea_state state;
 struct nmea_sources sources;
@@ -106,6 +109,12 @@ process_inbound_message (char *buf, int len)
 	  process_state (s);
       }
 
+    s = cJSON_GetObjectItemCaseSensitive (json, "calibrations");
+    if (s != NULL)
+      {
+	  process_calib_state (s);
+      }
+
     cJSON_Delete (json);
     free (message);
 
@@ -162,6 +171,7 @@ save_nmea_sources ()
 void
 print_nmea_sources ()
 {
+    fprintf (stderr, "NMEA sources used\n");
     fprintf (stderr, "Position source: %s\n", sources.position);
     fprintf (stderr, "Heading source: %s\n", sources.heading);
     fprintf (stderr, "Attitude source: %s\n", sources.attitude);
@@ -299,6 +309,11 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 
     if (pgn->valueint == 127250)
       {
+	  /*
+	     fprintf (stderr, "%d un: %s sources: %s\n", pgn->valueint, un,
+	     sources.heading);
+	   */
+
 	  if (!sources.heading[0] || !strcmp (un, sources.heading))
 	    {
 		//printf("PGN: %d %d\n", cJSON_IsString(pgn), pgn->valueint);
@@ -327,8 +342,13 @@ parse_nmea (char *line, char *message, char *message_nosrc)
       }
     else if (pgn->valueint == 129025)
       {
+	  fprintf (stderr, "New state.lng %f", newstate.lng->value);
+	  fprintf (stderr, "New state.lat %f", newstate.lat->value);
+
 	  if (!sources.position[0] || !strcmp (un, sources.position))
 	    {
+		fprintf (stderr, "UPDATING\n");
+
 		update_nmea_value (json, newstate.lng, "Longitude");
 		update_nmea_value (json, newstate.lat, "Latitude");
 	    }
@@ -359,11 +379,124 @@ parse_nmea (char *line, char *message, char *message_nosrc)
     else if (pgn->valueint == 128259)
       {
 	  update_nmea_value (json, newstate.speed, "Speed Water Referenced");
+
+	  // Output calibrated value
+	  if (!is_field_value_null (json, "Speed Water Referenced"))
+	    {
+		double speed =
+		    get_field_value_double (json, "Speed Water Referenced");
+
+		double c_speed = get_calib ("speed", speed);
+
+		cJSON *time =
+		    cJSON_GetObjectItemCaseSensitive (json, "timestamp");
+
+		char buf[2048];
+		make_nmea_speed_sentence (buf, time->valuestring, c_speed);
+
+		/* fprintf (stderr, "%f => %f\n", speed, c_speed); */
+		printf ("%s\n", buf);
+		fflush (stdout);
+	    }
       }
     else if (pgn->valueint == 130306)
       {
 	  update_nmea_value (json, newstate.awa, "Wind Angle");
 	  update_nmea_value (json, newstate.aws, "Wind Speed");
+
+	  // Output calibrated value
+	  if (!is_field_value_null (json, "Wind Angle"))
+	    {
+		double awa = get_field_value_double (json, "Wind Angle");
+		double aws = get_field_value_double (json, "Wind Speed");
+
+		// Fix initial alignment offset
+		double c_awa = get_calib ("awa", awa);
+
+		if (c_awa >= 360)
+		  {
+		      c_awa -= 360;
+		  }
+		else if (c_awa < 0)
+		  {
+		      c_awa += 360;
+		  }
+
+		// Calculate true wind (if we can)
+		int enough_data = 1;
+
+		struct tw_input twi;
+		memset (&twi, 0, sizeof (struct tw_input));
+		twi.awa = c_awa;
+		twi.aws = aws;
+		if (get_state_value (state.sog, 0, &twi.sog) == 0)
+		  {
+		      enough_data = 0;
+		  }
+
+		if (get_state_value (state.cog, 0, &twi.cog) == 0)
+		  {
+		      enough_data = 0;
+		  }
+
+		if (get_state_value (state.heading, 0, &twi.heading) == 0)
+		  {
+		      enough_data = 0;
+		  }
+
+		get_state_value (state.variation, 0, &twi.variation);
+		get_state_value (state.roll, 0, &twi.roll);
+		get_state_value (state.pitch, 0, &twi.pitch);
+
+		// fixme
+		twi.K = 10;
+		if (get_state_value (state.speed, 0, &twi.bspd) == 0)
+		  {
+		      enough_data = 0;
+		  }
+		strcpy (twi.speedunit, "m/s");
+
+		/*
+		   fprintf (stderr, "enough: %d\n", enough_data);
+		   fprintf (stderr,
+		   "bspd: %f sog: %f cog: %f aws: %f awa: %f heading: %f variation: %f roll: %f pitch: %f\n",
+		   twi.bspd, twi.sog, twi.cog, twi.aws, twi.awa,
+		   twi.heading, twi.variation, twi.roll, twi.pitch);
+		 */
+
+		struct tw_output two;
+		memset (&two, 0, sizeof (struct tw_output));
+
+		if (enough_data)
+		  {
+		      two = get_true (twi);
+
+		      /*
+		         fprintf (stderr,
+		         "awa: %f, aws: %f => awa: %f, aws: %f\n", awa,
+		         aws, two.awa, two.aws); */
+		      c_awa = two.awa;
+		      aws = two.aws;
+		  }
+
+		cJSON *time =
+		    cJSON_GetObjectItemCaseSensitive (json, "timestamp");
+
+		char buf[2048];
+		make_nmea_wind_sentence (buf, time->valuestring, c_awa, aws,
+					 0);
+
+		printf ("%s\n", buf);
+
+		// True wind
+		if (0)
+		  {
+		      make_nmea_wind_sentence (buf, time->valuestring,
+					       two.twa, two.tws, 1);
+		      printf ("%s\n", buf);
+		  }
+		fflush (stdout);
+	    }
       }
     else if (pgn->valueint == 60928)
       {
@@ -706,6 +839,37 @@ get_field_value_string (cJSON * json, char *fieldname)
 }
 
 int
+is_field_value_null (cJSON * json, char *fieldname)
+{
+    cJSON *fields = cJSON_GetObjectItemCaseSensitive (json, "fields");
+    if (fields)
+      {
+	  cJSON *v = cJSON_GetObjectItemCaseSensitive (fields, fieldname);
+	  return cJSON_IsNull (v);
+      }
+
+    return 1;
+}
+
+double
+get_field_value_double (cJSON * json, char *fieldname)
+{
+    cJSON *fields = cJSON_GetObjectItemCaseSensitive (json, "fields");
+    if (fields)
+      {
+	  cJSON *v = cJSON_GetObjectItemCaseSensitive (fields, fieldname);
+	  if (v)
+	    {
+		return v->valuedouble;
+	    }
+      }
+
+// Have to return something..
+    return 0;
+}
+
+
+int
 get_src (cJSON * json)
 {
     cJSON *src = cJSON_GetObjectItemCaseSensitive (json, "src");
@@ -879,7 +1043,6 @@ update_nmea_value (cJSON * json, struct nmea_value *arr, char *fieldname)
 	  cJSON *value = cJSON_GetObjectItemCaseSensitive (fields, fieldname);
 	  if (value)
 	    {
-		//printf("  value %f\n", value->valuedouble);
 		insert_or_replace (arr, src->valueint, value->valuedouble);
 		for (int x = 0; x < MAXSOURCES; x++)
 		  {
@@ -909,6 +1072,22 @@ insert_or_replace (struct nmea_value *arr, int src, float value)
     v.src = src;
     v.value = value;
     arr[x] = v;
+}
+
+double
+get_state_value (struct nmea_value *arr, int src, double *ret)
+{
+    for (int x = 0; x < MAXSOURCES; x++)
+      {
+	  if ((src != 0 && arr[x].src == src)
+	      || (src == 0 && arr[x].src != 0))
+	    {
+		*ret = (double) arr[x].value;
+		return 1;
+	    }
+      }
+
+    return 0;
 }
 
 int
@@ -964,5 +1143,7 @@ init_nmea_parser (int synctime)
 	  fclose (infile);
       }
 
+    /* print_claim_state (&c_state);
+       exit (0); */
     return 1;
 }

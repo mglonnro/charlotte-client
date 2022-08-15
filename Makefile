@@ -2,10 +2,10 @@ PLATFORM=$(shell uname | tr '[A-Z]' '[a-z]')-$(shell uname -m)
 TARGETDIR=.
 TARGET=charlotte-client
 TARGETS=$(TARGET)
-OBJS=charlotte-client.o nmea_parser.o cJSON.o ws.o epoch.o config.o
+OBJS=charlotte-client.o nmea_parser.o cJSON.o ws.o epoch.o config.o calibration.o nmea_creator.o truewind.o
 STATICLIBS=/usr/local/lib/libwebsockets.a /usr/local/lib/libcurl.a /usr/local/lib/libuv.a
-LDFLAGS=-lssl -lcrypto
-VER=1.1
+LDFLAGS=-lssl -lcrypto -lm
+VER=1.5
 CFLAGS=-g -Wall -ldl -lpthread -DVERSION=\"$(VER)\" #-DCHAR_DEBUG=1 #-DCHAR_DEBUG2=1 #-DCHAR_DEBUG=1
 all: $(TARGET)
 
@@ -34,6 +34,18 @@ epoch.o:	epoch.c
 config.o:	config.c
 			indent -i4 config.c
 			$(CC) $(CFLAGS) -c config.c
+
+calibration.o:	calibration.c
+			indent -i4 calibration.c
+			$(CC) $(CFLAGS) -c calibration.c
+
+nmea_creator.o:	nmea_creator.c
+			indent -i4 nmea_creator.c
+			$(CC) $(CFLAGS) -c nmea_creator.c
+
+truewind.o:	truewind.c
+			indent -i4 truewind.c
+			$(CC) $(CFLAGS) -c truewind.c
 
 clean:
 	-rm -f $(TARGETS) $(OBJS) *.elf *.gdb

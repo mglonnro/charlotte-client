@@ -87,3 +87,11 @@ void
 save_nmea_sources ();
 void
 print_nmea_sources ();
+
+int
+is_field_value_null (cJSON * json, char *fieldname);
+
+double get_field_value_double(cJSON * json, char *fieldname);
+double
+get_state_value(struct nmea_value *arr, int src, double *ret); 
+
