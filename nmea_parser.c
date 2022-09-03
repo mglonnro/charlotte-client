@@ -473,8 +473,8 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 
 		      /*
 		         fprintf (stderr,
-		         "awa: %f, aws: %f => awa: %f, aws: %f\n", awa,
-		         aws, two.awa, two.aws); */
+		         "awa: %f, aws: %f, heading: %f => twa: %f, twd: %f\n",
+		         awa, aws, twi.heading, two.twa, two.twd); */
 		      c_awa = two.awa;
 		      aws = two.aws;
 		      insert_or_replace (newstate.tws, 0, two.tws);
@@ -667,7 +667,7 @@ build_diff (struct nmea_state *old_state,
     changes += diff_values (ret, old_state->awa, new_state->awa, "awa");
     changes += diff_values (ret, old_state->tws, new_state->tws, "tws");
     changes += diff_values (ret, old_state->twa, new_state->twa, "twa");
-    changes += diff_values (ret, old_state->twd, new_state->twa, "twd");
+    changes += diff_values (ret, old_state->twd, new_state->twd, "twd");
     changes += diff_values (ret, old_state->lng, new_state->lng, "lng");
     changes += diff_values (ret, old_state->lat, new_state->lat, "lat");
     changes += diff_values (ret, old_state->speed, new_state->speed, "speed");
