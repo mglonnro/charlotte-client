@@ -5,7 +5,7 @@ TARGETS=$(TARGET)
 OBJS=charlotte-client.o nmea_parser.o cJSON.o ws.o epoch.o config.o calibration.o nmea_creator.o truewind.o
 STATICLIBS=/usr/local/lib/libwebsockets.a /usr/local/lib/libcurl.a /usr/local/lib/libuv.a
 LDFLAGS=-lssl -lcrypto -lm
-VER=1.5
+VER=1.6
 CFLAGS=-g -Wall -ldl -lpthread -DVERSION=\"$(VER)\" #-DCHAR_DEBUG=1 #-DCHAR_DEBUG2=1 #-DCHAR_DEBUG=1
 all: $(TARGET)
 

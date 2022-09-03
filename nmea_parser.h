@@ -16,6 +16,9 @@ struct nmea_state {
         struct nmea_value cog[MAXSOURCES];
         struct nmea_value aws[MAXSOURCES];
         struct nmea_value awa[MAXSOURCES];
+        struct nmea_value tws[MAXSOURCES];
+        struct nmea_value twa[MAXSOURCES];
+        struct nmea_value twd[MAXSOURCES];
         struct nmea_value lng[MAXSOURCES];
         struct nmea_value lat[MAXSOURCES];
         struct nmea_value speed[MAXSOURCES];

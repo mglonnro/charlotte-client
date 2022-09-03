@@ -411,7 +411,7 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 		double aws = get_field_value_double (json, "Wind Speed");
 
 		// Fix initial alignment offset
-		double c_awa = get_calib ("awa", awa);
+		double c_awa = awa;	// get_calib ("awa", awa);
 
 		if (c_awa >= 360)
 		  {
@@ -477,6 +477,9 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 		         aws, two.awa, two.aws); */
 		      c_awa = two.awa;
 		      aws = two.aws;
+		      insert_or_replace (newstate.tws, 0, two.tws);
+		      insert_or_replace (newstate.twa, 0, two.twa);
+		      insert_or_replace (newstate.twd, 0, two.twd);
 		  }
 
 		cJSON *time =
@@ -662,6 +665,9 @@ build_diff (struct nmea_state *old_state,
     changes += diff_values (ret, old_state->sog, new_state->sog, "sog");
     changes += diff_values (ret, old_state->aws, new_state->aws, "aws");
     changes += diff_values (ret, old_state->awa, new_state->awa, "awa");
+    changes += diff_values (ret, old_state->tws, new_state->tws, "tws");
+    changes += diff_values (ret, old_state->twa, new_state->twa, "twa");
+    changes += diff_values (ret, old_state->twd, new_state->twa, "twd");
     changes += diff_values (ret, old_state->lng, new_state->lng, "lng");
     changes += diff_values (ret, old_state->lat, new_state->lat, "lat");
     changes += diff_values (ret, old_state->speed, new_state->speed, "speed");
@@ -1121,8 +1127,8 @@ print_claim_state (struct claim_state *c)
     for (int i = 0; i < MAXDEVICES; i++)
       {
 	  fprintf (stderr, "Device #%d: unique %s\n", i,
-		   c->devices[i].unique_number[0] ? c->
-		   devices[i].unique_number : "NULL");
+		   c->devices[i].unique_number[0] ? c->devices[i].
+		   unique_number : "NULL");
       }
 }
 
