@@ -98,3 +98,5 @@ double get_field_value_double(cJSON * json, char *fieldname);
 double
 get_state_value(struct nmea_value *arr, int src, double *ret); 
 
+void
+get_rfc3339_now(char *buf);

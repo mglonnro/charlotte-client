@@ -266,14 +266,21 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 		ws_write_client (message, strlen (message) + 1);
 	    }
 
+	  fprintf (stderr, "Out of send 1\n");
+
 	  cJSON *config = get_config_state ();
+	  fprintf (stderr, "Out of send 2\n");
 	  char *p = cJSON_Print (config);
-	  trim_message (p);
+	  fprintf (stderr, "Out of send 3\n");
+	  if (p)
+	    {
+		trim_message (p);
 
-	  fprintf (stderr, "Sending config: %s\n", p);
+		fprintf (stderr, "Sending config: %s\n", p);
 
-	  ws_write_client (p, strlen (p) + 1);
-	  free (p);
+		ws_write_client (p, strlen (p) + 1);
+		free (p);
+	    }
 	  cJSON_Delete (config);
 
 	  break;

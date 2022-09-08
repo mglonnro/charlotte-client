@@ -31,15 +31,24 @@ get_nmea_state (char *message)
     if (diff)
       {
 	  char *p = cJSON_Print (diff);
-	  trim_message (p);
-	  fprintf (stderr, "state: %s\n", p);
-	  free (p);
+	  fprintf (stderr, "state 1: %s\n", p);
+
+	  if (p)
+	    {
+		trim_message (p);
+		fprintf (stderr, "state 2: %s\n", p);
+		free (p);
+	    }
+	  fprintf (stderr, "state3\n");
 
 	  cJSON *nosrc = nmea_strip_sources (diff);
 	  p = cJSON_Print (nosrc);
-	  sprintf (message, "%s", p);
-	  trim_message (message);
-	  free (p);
+	  if (p)
+	    {
+		sprintf (message, "%s", p);
+		trim_message (message);
+		free (p);
+	    }
 	  cJSON_Delete (nosrc);
 	  cJSON_Delete (diff);
 	  return 1;
@@ -579,12 +588,20 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 
     if (diff)
       {
+
+	  /* Add current timestmap */
+	  char tbuf[256];
+	  memset (tbuf, 0, 256);
+	  get_rfc3339_now (tbuf);
+	  cJSON_AddStringToObject (diff, "time", tbuf);
+
 	  char *p = cJSON_Print (diff);
 	  sprintf (message, "%s", p);
 	  free (p);
 	  trim_message (message);
 
 	  cJSON *nosrc = nmea_strip_sources (diff);
+	  cJSON_AddStringToObject (nosrc, "time", tbuf);
 	  p = cJSON_Print (nosrc);
 	  sprintf (message_nosrc, "%s", p);
 	  trim_message (message_nosrc);
@@ -1127,8 +1144,8 @@ print_claim_state (struct claim_state *c)
     for (int i = 0; i < MAXDEVICES; i++)
       {
 	  fprintf (stderr, "Device #%d: unique %s\n", i,
-		   c->devices[i].unique_number[0] ? c->devices[i].
-		   unique_number : "NULL");
+		   c->devices[i].unique_number[0] ? c->
+		   devices[i].unique_number : "NULL");
       }
 }
 
@@ -1152,4 +1169,29 @@ init_nmea_parser (int synctime)
     /* print_claim_state (&c_state);
        exit (0); */
     return 1;
+}
+
+void
+get_rfc3339_now (char *buf)
+{
+    time_t now = time (NULL);
+    struct tm *tm;
+    int off_sign;
+    int off;
+
+    if ((tm = localtime (&now)) == NULL)
+      {
+	  return;
+      }
+    off_sign = '+';
+    off = (int) tm->tm_gmtoff;
+    if (tm->tm_gmtoff < 0)
+      {
+	  off_sign = '-';
+	  off = -off;
+      }
+    sprintf (buf, "%d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",
+	     tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+	     tm->tm_hour, tm->tm_min, tm->tm_sec,
+	     off_sign, off / 3600, off % 3600);
 }
