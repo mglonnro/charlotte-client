@@ -18,6 +18,7 @@
 #include "ws.h"
 #include "config.h"
 #include "nmea_parser.h"
+#include "epoch.h"
 
 /*
  * This represents your object that "contains" the client connection and has
@@ -205,8 +206,6 @@ static int
 callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 		  void *user, void *in, size_t len)
 {
-    /* fprintf (stderr, "callback clien %d\n", reason); */
-
     struct my_conn *mco = (struct my_conn *) user;
 
     struct per_session_data__minimal *pss =
@@ -230,6 +229,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 
     switch (reason)
       {
+/* One-time call per protocol, per-vhost using it, so it can do initial setup / allocations etc */
       case LWS_CALLBACK_PROTOCOL_INIT:
 	  vhd = lws_protocol_vh_priv_zalloc (lws_get_vhost (wsi),
 					     lws_get_protocol (wsi),
@@ -243,9 +243,11 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	  if (!vhd->s_ring)
 	      return 1;
 	  vhd->tail = 0;
-
 	  vhost = vhd;
 	  break;
+
+
+/* (VH) after the server completes a handshake with an incoming client. If you built the library with ssl support, in is a pointer to the ssl struct associated with the connection or NULL. */
 
       case LWS_CALLBACK_ESTABLISHED:
 	  /* add ourselves to the list of live pss held in the vhd */
@@ -265,13 +267,13 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 		fprintf (stderr, "Sending state: %s\n", message);
 		ws_write_client (message, strlen (message) + 1);
 	    }
-
-	  fprintf (stderr, "Out of send 1\n");
+	  else
+	    {
+		fprintf (stderr, "No state to send!\n");
+	    }
 
 	  cJSON *config = get_config_state ();
-	  fprintf (stderr, "Out of send 2\n");
 	  char *p = cJSON_Print (config);
-	  fprintf (stderr, "Out of send 3\n");
 	  if (p)
 	    {
 		trim_message (p);
@@ -294,57 +296,82 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	  break;
 
       case LWS_CALLBACK_SERVER_WRITEABLE:
-	  /*if (!vhd->amsg.payload)
-	     break;
 
-	     if (pss->last == vhd->current)
-	     break; */
-
-	  /* notice we allowed for LWS_PRE in the payload already */
-	  /* m = lws_write (wsi, ((unsigned char *) vhd->amsg.payload) +
-	     LWS_PRE, vhd->amsg.len, LWS_WRITE_TEXT);
-	     if (m < (int) vhd->amsg.len)
-	     {
-	     lwsl_err ("ERROR %d writing to ws\n", m);
-	     return -1;
-	     }
-
-	     pss->last = vhd->current; */
+	  /*
+	     fprintf (stderr, "IN SERVER_WRITEABLE %d\n",
+	     lws_ring_get_count_waiting_elements (vhd->s_ring,
+	     &vhd->tail));
+	   */
 
 #ifdef CHAR_DEBUG2
 	  fprintf (stderr, "w1");
 	  fflush (stderr);
 #endif
 
-	  if (vhd->write_consume_pending)
-	    {
-		/* perform the deferred fifo consume */
-		lws_ring_consume_single_tail (vhd->s_ring, &vhd->tail, 1);
-		vhd->write_consume_pending = 0;
-	    }
+	  /*
+	     if (vhd->write_consume_pending)
+	     {
+	     lws_ring_consume_single_tail (vhd->s_ring, &vhd->tail, 1);
+	     vhd->write_consume_pending = 0;
+	     }
+	   */
 	  pmsg = lws_ring_get_element (vhd->s_ring, &vhd->tail);
 	  if (!pmsg)
 	    {
 		lwsl_user (" (nothing in s_ring)\n");
 		break;
 	    }
+	  else
+	    {
+		/*
+		   char *ptr = pmsg->payload + LWS_PRE;
+		   if (strstr (ptr, "aws"))
+		   {
+		   char tbuf[31];
+		   memset (tbuf, 0, 31);
+		   getUTCTimestamp (tbuf);
+		   fprintf (stderr, "%s SENDING: %s\n", tbuf,
+		   (char *) (pmsg->payload + LWS_PRE));
+		   }
+		 */
+	    }
 
 	  /* notice we allowed for LWS_PRE in the payload already */
 	  m = lws_write (wsi, ((unsigned char *) pmsg->payload) +
 			 LWS_PRE, pmsg->len, LWS_WRITE_TEXT);
+
+
 	  if (m < (int) pmsg->len)
 	    {
 		lwsl_err ("ERROR %d writing to ws socket\n", m);
+		lws_ring_consume_single_tail (vhd->s_ring, &vhd->tail, 1);
+		fprintf (stderr, "OUT.b SERVER_WRITEABLE %d\n",
+			 lws_ring_get_count_waiting_elements (vhd->s_ring,
+							      &vhd->tail));
 		return -1;
 	    }
+
+	  lws_ring_consume_single_tail (vhd->s_ring, &vhd->tail, 1);
 	  vhd->completed = 1;
+	  /*
+	     fprintf (stderr, "OUT.c SERVER_WRITEABLE %d\n",
+	     lws_ring_get_count_waiting_elements (vhd->s_ring,
+	     &vhd->tail));
+	   */
+
+	  if (lws_ring_get_count_waiting_elements (vhd->s_ring, &vhd->tail) >
+	      0)
+	    {
+
+		lws_callback_on_writable (wsi);
+	    }
 
 	  /*
 	   * Workaround deferred deflate in pmd extension by only consuming the
 	   * fifo entry when we are certain it has been fully deflated at the
 	   * next WRITABLE callback.  You only need this if you're using pmd.
 	   */
-	  vhd->write_consume_pending = 1;
+	  /* vhd->write_consume_pending = 1; */
 
 	  break;
       case LWS_CALLBACK_RECEIVE:
@@ -400,8 +427,6 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	  break;
 
       case LWS_CALLBACK_CLIENT_RECEIVE:
-	  fprintf (stderr, "LWS_CALLBACK_CLIENT_RECEIVE\n");
-
 	  if (strlen (receive_message) + len + 1 > CLIENT_MSG_BUFFER)
 	    {
 		fprintf (stderr, "buffer overrun, dropping %d bytes\n", len);
@@ -449,7 +474,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	  fflush (stderr);
 #endif
 
-	  /* lwsl_user ("LWS_CALLBACK_CLIENT_WRITEABLE\n"); */
+	  lwsl_user ("LWS_CALLBACK_CLIENT_WRITEABLE\n");
 
 	  if (mco->write_consume_pending)
 	    {
@@ -701,11 +726,13 @@ ws_write_client (char *buf, int len)
 
     if (get_connected_count (vhd->pss_list) == 0)
       {
+	  fprintf (stderr, "ws_write_client: no connected clients\n");
 	  clear_lws_ring (vhd, vhd->s_ring);
 	  return 0;
       }
 
     int n = (int) lws_ring_get_count_free_elements (vhd->s_ring);
+    /* fprintf (stderr, "Ring free elements: %d\n", n); */
     if (!n)
       {
 #ifdef CHAR_DEBUG2
@@ -730,6 +757,7 @@ ws_write_client (char *buf, int len)
     amsg.payload = malloc (LWS_PRE + len);
     if (!amsg.payload)
       {
+	  fprintf (stderr, "ws_write_client: cannot alloc for payload\n");
 #ifdef CHAR_DEBUG2
 	  fprintf (stderr, "e3");
 	  fflush (stderr);
@@ -743,6 +771,7 @@ ws_write_client (char *buf, int len)
 
     if (!lws_ring_insert (vhd->s_ring, &amsg, 1))
       {
+	  fprintf (stderr, "ws_write_client: cannot insert into ring!\n");
 #ifdef CHAR_DEBUG2
 	  fprintf (stderr, "e4");
 	  fflush (stderr);

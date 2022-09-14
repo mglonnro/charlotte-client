@@ -11,6 +11,7 @@
 #include "config.h"
 #include "calibration.h"
 #include "truewind.h"
+#include "epoch.h"
 
 struct nmea_state state;
 struct nmea_sources sources;
@@ -28,21 +29,17 @@ get_nmea_state (char *message)
     memset (&c_newstate, 0, sizeof (struct claim_state));
 
     cJSON *diff = build_diff (&newstate, &state, &c_newstate, &c_state);
+
     if (diff)
       {
-	  char *p = cJSON_Print (diff);
-	  fprintf (stderr, "state 1: %s\n", p);
-
-	  if (p)
-	    {
-		trim_message (p);
-		fprintf (stderr, "state 2: %s\n", p);
-		free (p);
-	    }
-	  fprintf (stderr, "state3\n");
-
 	  cJSON *nosrc = nmea_strip_sources (diff);
-	  p = cJSON_Print (nosrc);
+
+	  /* Add current timestmap */
+	  char tbuf[31];
+	  memset (tbuf, 0, 31);
+	  getUTCTimestamp (tbuf);
+	  cJSON_AddStringToObject (nosrc, "time", tbuf);
+	  char *p = cJSON_Print (nosrc);
 	  if (p)
 	    {
 		sprintf (message, "%s", p);
@@ -63,14 +60,11 @@ char *
 process_inbound_message (char *buf, int len)
 {
     char *ret = NULL;
-
     char *message = malloc (len + 1);
     memcpy (message, buf, len);
     message[len] = 0;
-
     fprintf (stderr, "Incoming message: %s\n", message);
     cJSON *json = cJSON_Parse (message);
-
     if (json == NULL)
       {
 	  cJSON_Delete (json);
@@ -97,9 +91,7 @@ process_inbound_message (char *buf, int len)
 	    }
 
 	  process_cmd (json);
-
 	  cJSON *state = get_config_state ();
-
 	  if (state)
 	    {
 		ret = cJSON_Print (state);
@@ -126,7 +118,6 @@ process_inbound_message (char *buf, int len)
 
     cJSON_Delete (json);
     free (message);
-
     if (ret)
       {
 	  fprintf (stderr, "Returning reply: %s\n", ret);
@@ -206,8 +197,6 @@ parse_nmea (char *line, char *message, char *message_nosrc)
     fprintf (stderr, "n0");
     fflush (stderr);
 #endif
-
-
     cJSON *json = cJSON_Parse (line);
     if (json == NULL)
       {
@@ -231,17 +220,14 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 	  return 0;
       }
     cJSON *ais = NULL;
-
 #ifdef CHAR_DEBUG
     fprintf (stderr, "n1");
     fflush (stderr);
 #endif
-
     struct nmea_state newstate;
     memcpy (&newstate, &state, sizeof (state));
     struct claim_state c_newstate;
     memcpy (&c_newstate, &c_state, sizeof (c_state));
-
     /*
      * { name: "position", pgn: 129025, src: 127, parse: (o) => { return {
      * lat: o.fields.Latitude, lng: o.fields.Longitude } } }, // Position,
@@ -255,18 +241,15 @@ parse_nmea (char *line, char *message, char *message_nosrc)
      * return { ais: "report", data: o.fields } } }, { name: "ais", pgn:
      * 129039, parse: (o) => { return { ais: "report", data: o.fields } } },
      */
-
     char un[DLENGTH];
     memset (un, 0, DLENGTH);
     int src = get_src (json);
     get_unique_number (src, &c_newstate, un);
-
     // sync time
     if (pgn->valueint == 126992 && n2k_synctime)
       {
 	  char *n2k_date = get_field_value_string (json, "Date");
 	  char *n2k_time = get_field_value_string (json, "Time");
-
 	  if (n2k_date && n2k_time)
 	    {
 
@@ -274,7 +257,6 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 		memset (&current, 0, sizeof (struct tm));
 		char tmp_date[DLENGTH];
 		memset (tmp_date, 0, DLENGTH);
-
 		sprintf (tmp_date, "%s %s", n2k_date, n2k_time);
 		if (strptime (tmp_date, "%Y.%m.%d %H:%M:%S", &current) ==
 		    NULL)
@@ -286,7 +268,6 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 		      time_t now;
 		      time (&now);
 		      time_t t = timegm (&current);
-
 		      // allow for 5s drift
 		      if (labs (now - t) > 5)
 			{
@@ -295,9 +276,7 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 			    fprintf (stderr,
 				     "Attempting to set time since drift: %ld\n",
 				     labs (now - t));
-
 			    struct timeval tv;
-
 			    tv.tv_sec = t;
 			    tv.tv_usec = 0;
 			    if (settimeofday (&tv, NULL) == 0)
@@ -351,13 +330,8 @@ parse_nmea (char *line, char *message, char *message_nosrc)
       }
     else if (pgn->valueint == 129025)
       {
-	  fprintf (stderr, "New state.lng %f", newstate.lng->value);
-	  fprintf (stderr, "New state.lat %f", newstate.lat->value);
-
 	  if (!sources.position[0] || !strcmp (un, sources.position))
 	    {
-		fprintf (stderr, "UPDATING\n");
-
 		update_nmea_value (json, newstate.lng, "Longitude");
 		update_nmea_value (json, newstate.lat, "Latitude");
 	    }
@@ -388,23 +362,19 @@ parse_nmea (char *line, char *message, char *message_nosrc)
     else if (pgn->valueint == 128259)
       {
 	  update_nmea_value (json, newstate.speed, "Speed Water Referenced");
-
 	  // Output calibrated value
-	  if (!is_field_value_null (json, "Speed Water Referenced"))
+
+	  if (0 && !is_field_value_null (json, "Speed Water Referenced"))
 	    {
 		double speed =
 		    get_field_value_double (json, "Speed Water Referenced");
-
 		double c_speed = get_calib ("speed", speed);
-
 		cJSON *time =
 		    cJSON_GetObjectItemCaseSensitive (json, "timestamp");
-
 		char buf[2048];
-		make_nmea_speed_sentence (buf, time->valuestring, c_speed);
-
+		// make_nmea_speed_sentence (buf, time->valuestring, c_speed);
 		/* fprintf (stderr, "%f => %f\n", speed, c_speed); */
-		printf ("%s\n", buf);
+		// printf ("%s\n", buf);
 		fflush (stdout);
 	    }
       }
@@ -412,16 +382,13 @@ parse_nmea (char *line, char *message, char *message_nosrc)
       {
 	  update_nmea_value (json, newstate.awa, "Wind Angle");
 	  update_nmea_value (json, newstate.aws, "Wind Speed");
-
 	  // Output calibrated value
 	  if (!is_field_value_null (json, "Wind Angle"))
 	    {
 		double awa = get_field_value_double (json, "Wind Angle");
 		double aws = get_field_value_double (json, "Wind Speed");
-
 		// Fix initial alignment offset
 		double c_awa = awa;	// get_calib ("awa", awa);
-
 		if (c_awa >= 360)
 		  {
 		      c_awa -= 360;
@@ -433,7 +400,6 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 
 		// Calculate true wind (if we can)
 		int enough_data = 1;
-
 		struct tw_input twi;
 		memset (&twi, 0, sizeof (struct tw_input));
 		twi.awa = c_awa;
@@ -456,14 +422,25 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 		get_state_value (state.variation, 0, &twi.variation);
 		get_state_value (state.roll, 0, &twi.roll);
 		get_state_value (state.pitch, 0, &twi.pitch);
-
 		// fixme
 		twi.K = 10;
 		if (get_state_value (state.speed, 0, &twi.bspd) == 0)
 		  {
-		      enough_data = 0;
+		      if (enough_data != 0)
+			{
+			    twi.bspd = twi.sog;
+			    enough_data = 1;
+			}
+		      else
+			{
+			    enough_data = 0;
+			}
 		  }
 		strcpy (twi.speedunit, "m/s");
+		if (twi.bspd < 0.001 && twi.sog > 0)
+		  {
+		      twi.bspd = twi.sog;
+		  }
 
 		/*
 		   fprintf (stderr, "enough: %d\n", enough_data);
@@ -475,11 +452,9 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 
 		struct tw_output two;
 		memset (&two, 0, sizeof (struct tw_output));
-
 		if (enough_data)
 		  {
 		      two = get_true (twi);
-
 		      /*
 		         fprintf (stderr,
 		         "awa: %f, aws: %f, heading: %f => twa: %f, twd: %f\n",
@@ -493,13 +468,10 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 
 		cJSON *time =
 		    cJSON_GetObjectItemCaseSensitive (json, "timestamp");
-
 		char buf[2048];
-		make_nmea_wind_sentence (buf, time->valuestring, c_awa, aws,
-					 0);
-
-		printf ("%s\n", buf);
-
+		// make_nmea_wind_sentence (buf, time->valuestring, c_awa,
+		//                       aws, 0);
+		// printf ("%s\n", buf);
 		// True wind
 		if (0)
 		  {
@@ -521,7 +493,8 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 	  int found = get_unique_number (src, &c_newstate, unique_number);
 	  if (found)
 	    {
-		fprintf (stderr, "Updating device with unique number %s\n",
+		fprintf (stderr,
+			 "Updating device with unique number %s\n",
 			 unique_number);
 		update_nmea_device (json, unique_number, c_newstate.devices);
 	    }
@@ -568,7 +541,6 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 	  sprintf (key, "%d", user_id);
 	  ais = cJSON_CreateObject ();
 	  char *v = cJSON_Print (values);
-
 	  cJSON *aisvalues = cJSON_Parse (v);
 	  if (aisvalues)
 	    {
@@ -580,12 +552,10 @@ parse_nmea (char *line, char *message, char *message_nosrc)
     memcpy (&state, &newstate, sizeof (newstate));
     memcpy (&c_state, &c_newstate, sizeof (c_newstate));
     cJSON_Delete (json);
-
 #ifdef CHAR_DEBUG
     fprintf (stderr, "n2");
     fflush (stderr);
 #endif
-
     if (diff)
       {
 
@@ -594,17 +564,22 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 	  memset (tbuf, 0, 256);
 	  get_rfc3339_now (tbuf);
 	  cJSON_AddStringToObject (diff, "time", tbuf);
-
 	  char *p = cJSON_Print (diff);
 	  sprintf (message, "%s", p);
 	  free (p);
 	  trim_message (message);
-
 	  cJSON *nosrc = nmea_strip_sources (diff);
 	  cJSON_AddStringToObject (nosrc, "time", tbuf);
 	  p = cJSON_Print (nosrc);
 	  sprintf (message_nosrc, "%s", p);
 	  trim_message (message_nosrc);
+
+	  /*
+	     if (strstr (message_nosrc, "aws"))
+	     {
+	     fprintf (stderr, "%s MSG: %s\n", tbuf, message_nosrc);
+	     }
+	   */
 	  free (p);
 	  cJSON_Delete (nosrc);
 	  cJSON_Delete (diff);
@@ -624,10 +599,8 @@ cJSON *
 nmea_strip_sources (cJSON * json)
 {
     cJSON *nosrc = cJSON_CreateObject ();
-
     cJSON *obj = NULL;
     cJSON *src = NULL;
-
     cJSON_ArrayForEach (obj, json)
     {
 	if (!strcmp (obj->string, "ais"))
@@ -673,8 +646,8 @@ build_diff (struct nmea_state *old_state,
     int changes = diff_values (ret, old_state->heading, new_state->heading,
 			       "heading");
     changes +=
-	diff_values (ret, old_state->variation, new_state->variation,
-		     "variation");
+	diff_values (ret, old_state->variation,
+		     new_state->variation, "variation");
     changes +=
 	diff_values (ret, old_state->trueheading,
 		     new_state->trueheading, "trueheading");
@@ -699,7 +672,6 @@ build_diff (struct nmea_state *old_state,
 			    c_new_state->devices, "devices");
     if (changes)
       {
-	  //printf("JSON: %s\n", cJSON_Print(ret));
 	  return ret;
       }
     else
@@ -829,7 +801,12 @@ diff_values (cJSON * root, struct nmea_value *old_arr,
 		char key[10];
 		memset (key, 0, 10);
 		sprintf (key, "%d", new_arr[n].src);
-		cJSON_AddNumberToObject (src, key, new_arr[n].value);
+		if (cJSON_AddNumberToObject (src, key, new_arr[n].value)
+		    == NULL)
+		  {
+		      fprintf (stderr, "Error adding number to object!\n");
+		  }
+
 		diff = 1;
 	    }
       }
@@ -918,8 +895,8 @@ update_nmea_claim (cJSON * json, struct claim *arr)
     cJSON *src = cJSON_GetObjectItemCaseSensitive (json, "src");
     if (fields)
       {
-	  cJSON *value =
-	      cJSON_GetObjectItemCaseSensitive (fields, "Unique Number");
+	  cJSON *value = cJSON_GetObjectItemCaseSensitive (fields,
+							   "Unique Number");
 	  if (value)
 	    {
 		char unique_number[DLENGTH];
@@ -982,10 +959,10 @@ update_nmea_device (cJSON * json, char *unique_number, struct device *arr)
 	  cJSON *software_version_code =
 	      cJSON_GetObjectItemCaseSensitive (fields,
 						"Software Version Code");
-	  cJSON *model_version =
-	      cJSON_GetObjectItemCaseSensitive (fields, "Model Version");
-	  cJSON *model_serial_code =
-	      cJSON_GetObjectItemCaseSensitive (fields, "Model Serial Code");
+	  cJSON *model_version = cJSON_GetObjectItemCaseSensitive (fields,
+								   "Model Version");
+	  cJSON *model_serial_code = cJSON_GetObjectItemCaseSensitive (fields,
+								       "Model Serial Code");
 	  if (model_id)
 	    {
 		/* Delete old value if any ,return if already exists */
@@ -1153,11 +1130,9 @@ int
 init_nmea_parser (int synctime)
 {
     n2k_synctime = synctime;
-
     memset (&state, 0, sizeof (struct nmea_state));
     memset (&sources, 0, sizeof (struct nmea_sources));
     memset (&c_state, 0, sizeof (struct claim_state));
-
     FILE *infile;
     infile = fopen ("claim.state", "r");
     if (infile != NULL)
@@ -1178,7 +1153,6 @@ get_rfc3339_now (char *buf)
     struct tm *tm;
     int off_sign;
     int off;
-
     if ((tm = localtime (&now)) == NULL)
       {
 	  return;
