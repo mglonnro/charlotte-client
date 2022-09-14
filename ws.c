@@ -46,7 +46,7 @@ static struct my_conn
     uint8_t completed:1;
     uint8_t write_consume_pending:1;
 
-    struct per_session_data__minimal *pss_list;
+    // struct per_session_data__minimal *pss_list;
 
     struct msg amsg;		/* the one pending message... */
     int current;		/* the current message number we are caching */
@@ -54,15 +54,16 @@ static struct my_conn
 
 /* one of these is created for each client connecting to us */
 
-struct per_session_data__minimal
+struct per_local_session_data__minimal
 {
-    struct per_session_data__minimal *pss_list;
+    struct per_local_session_data__minimal *pss_list;
     struct lws *wsi;
+    struct lws_ring *client_ring;
     int last;			/* the last message number we sent */
 };
 
 int
-get_connected_count (struct per_session_data__minimal *pss_list)
+get_connected_count (struct per_local_session_data__minimal *pss_list)
 {
     if (!pss_list)
       {
@@ -70,7 +71,7 @@ get_connected_count (struct per_session_data__minimal *pss_list)
       }
 
     int count = 1;
-    struct per_session_data__minimal *next = pss_list;
+    struct per_local_session_data__minimal *next = pss_list;
 
     while (next->pss_list != NULL)
       {
@@ -89,7 +90,7 @@ struct per_vhost_data__minimal
     struct lws_vhost *vhost;
     const struct lws_protocols *protocol;
 
-    struct per_session_data__minimal *pss_list;	/* linked-list of live pss */
+    struct per_local_session_data__minimal *pss_list;	/* linked-list of live pss */
 
     struct lws_ring *s_ring;
     uint32_t tail;
@@ -208,8 +209,8 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 {
     struct my_conn *mco = (struct my_conn *) user;
 
-    struct per_session_data__minimal *pss =
-	(struct per_session_data__minimal *) user;
+    struct per_local_session_data__minimal *pss =
+	(struct per_local_session_data__minimal *) user;
     struct per_vhost_data__minimal *vhd =
 	(struct per_vhost_data__minimal *)
 	lws_protocol_vh_priv_get (lws_get_vhost (wsi),
@@ -254,11 +255,15 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	  lws_ll_fwd_insert (pss, pss_list, vhd->pss_list);
 	  pss->wsi = wsi;
 	  pss->last = vhd->current;
+	  pss->client_ring =
+	      lws_ring_create (sizeof (struct msg), RING_DEPTH,
+			       __minimal_destroy_message);
 
 	  fprintf (stderr, "Connected count: %d\n",
 		   get_connected_count (vhd->pss_list));
 
 	  /* Send config & state */
+	  /* Will this send it to all clients? */
 	  memset (message, 0, MSGBUFSIZE);
 	  get_nmea_state (message);
 
@@ -289,7 +294,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 
       case LWS_CALLBACK_CLOSED:
 	  /* remove our closing pss from the list of live pss */
-	  lws_ll_fwd_remove (struct per_session_data__minimal, pss_list,
+	  lws_ll_fwd_remove (struct per_local_session_data__minimal, pss_list,
 			     pss, vhd->pss_list);
 	  fprintf (stderr, "Connected count: %d\n",
 		   get_connected_count (vhd->pss_list));
@@ -408,7 +413,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	   * let everybody know we want to write something on them
 	   * as soon as they are ready
 	   */
-	  lws_start_foreach_llp (struct per_session_data__minimal **,
+	  lws_start_foreach_llp (struct per_local_session_data__minimal **,
 				 ppss, vhd->pss_list)
 	  {
 	      lws_callback_on_writable ((*ppss)->wsi);
@@ -569,7 +574,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 
 static const struct lws_protocols protocols[] = {
     {"lws-minimal-client", callback_minimal,
-     sizeof (struct per_session_data__minimal), 128, 0, NULL, 0},
+     sizeof (struct per_local_session_data__minimal), 128, 0, NULL, 0},
     {NULL, NULL, 0, 0}
 };
 
@@ -741,7 +746,7 @@ ws_write_client (char *buf, int len)
 #endif
 	  lwsl_user ("dropping!\n");
 
-	  lws_start_foreach_llp (struct per_session_data__minimal **,
+	  lws_start_foreach_llp (struct per_local_session_data__minimal **,
 				 ppss, vhd->pss_list)
 	  {
 	      lws_callback_on_writable ((*ppss)->wsi);
@@ -788,7 +793,7 @@ ws_write_client (char *buf, int len)
 #ifdef CHAR_DEBUG2
     int count = 0;
 #endif
-    lws_start_foreach_llp (struct per_session_data__minimal **,
+    lws_start_foreach_llp (struct per_local_session_data__minimal **,
 			   ppss, vhd->pss_list)
     {
 #ifdef CHAR_DEBUG2
