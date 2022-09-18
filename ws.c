@@ -60,6 +60,10 @@ struct per_local_session_data__minimal
     struct lws *wsi;
     struct lws_ring *client_ring;
     int last;			/* the last message number we sent */
+    uint32_t tail;
+    char flow_controlled;
+    uint8_t completed:1;
+    uint8_t write_consume_pending:1;
 };
 
 int
@@ -258,6 +262,11 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	  pss->client_ring =
 	      lws_ring_create (sizeof (struct msg), RING_DEPTH,
 			       __minimal_destroy_message);
+	  if (!pss->client_ring)
+	    {
+		return 1;
+	    }
+	  pss->tail = 0;
 
 	  fprintf (stderr, "Connected count: %d\n",
 		   get_connected_count (vhd->pss_list));
@@ -304,8 +313,8 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 
 	  /*
 	     fprintf (stderr, "IN SERVER_WRITEABLE %d\n",
-	     lws_ring_get_count_waiting_elements (vhd->s_ring,
-	     &vhd->tail));
+	     lws_ring_get_count_waiting_elements (pss->client_ring,
+	     &pss->tail));
 	   */
 
 #ifdef CHAR_DEBUG2
@@ -313,14 +322,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	  fflush (stderr);
 #endif
 
-	  /*
-	     if (vhd->write_consume_pending)
-	     {
-	     lws_ring_consume_single_tail (vhd->s_ring, &vhd->tail, 1);
-	     vhd->write_consume_pending = 0;
-	     }
-	   */
-	  pmsg = lws_ring_get_element (vhd->s_ring, &vhd->tail);
+	  pmsg = lws_ring_get_element (pss->client_ring, &pss->tail);
 	  if (!pmsg)
 	    {
 		lwsl_user (" (nothing in s_ring)\n");
@@ -349,34 +351,23 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	  if (m < (int) pmsg->len)
 	    {
 		lwsl_err ("ERROR %d writing to ws socket\n", m);
-		lws_ring_consume_single_tail (vhd->s_ring, &vhd->tail, 1);
+		lws_ring_consume_single_tail (pss->client_ring, &pss->tail,
+					      1);
 		fprintf (stderr, "OUT.b SERVER_WRITEABLE %d\n",
-			 lws_ring_get_count_waiting_elements (vhd->s_ring,
-							      &vhd->tail));
+			 lws_ring_get_count_waiting_elements
+			 (pss->client_ring, &pss->tail));
 		return -1;
 	    }
 
-	  lws_ring_consume_single_tail (vhd->s_ring, &vhd->tail, 1);
-	  vhd->completed = 1;
-	  /*
-	     fprintf (stderr, "OUT.c SERVER_WRITEABLE %d\n",
-	     lws_ring_get_count_waiting_elements (vhd->s_ring,
-	     &vhd->tail));
-	   */
+	  lws_ring_consume_single_tail (pss->client_ring, &pss->tail, 1);
+	  pss->completed = 1;
 
-	  if (lws_ring_get_count_waiting_elements (vhd->s_ring, &vhd->tail) >
-	      0)
+	  if (lws_ring_get_count_waiting_elements
+	      (pss->client_ring, &pss->tail) > 0)
 	    {
 
 		lws_callback_on_writable (wsi);
 	    }
-
-	  /*
-	   * Workaround deferred deflate in pmd extension by only consuming the
-	   * fifo entry when we are certain it has been fully deflated at the
-	   * next WRITABLE callback.  You only need this if you're using pmd.
-	   */
-	  /* vhd->write_consume_pending = 1; */
 
 	  break;
       case LWS_CALLBACK_RECEIVE:
@@ -718,14 +709,9 @@ ws_write_client (char *buf, int len)
 {
     struct per_vhost_data__minimal *vhd =
 	(struct per_vhost_data__minimal *) vhost;
-    struct msg amsg;
 
     if (!vhd || !vhd->s_ring)
       {
-#ifdef CHAR_DEBUG2
-	  fprintf (stderr, "e1");
-	  fflush (stderr);
-#endif
 	  return 0;
       }
 
@@ -736,72 +722,49 @@ ws_write_client (char *buf, int len)
 	  return 0;
       }
 
-    int n = (int) lws_ring_get_count_free_elements (vhd->s_ring);
-    /* fprintf (stderr, "Ring free elements: %d\n", n); */
-    if (!n)
-      {
-#ifdef CHAR_DEBUG2
-	  fprintf (stderr, "e2");
-	  fflush (stderr);
-#endif
-	  lwsl_user ("dropping!\n");
-
-	  lws_start_foreach_llp (struct per_local_session_data__minimal **,
-				 ppss, vhd->pss_list)
-	  {
-	      lws_callback_on_writable ((*ppss)->wsi);
-	  } lws_end_foreach_llp (ppss, pss_list);
-
-	  return 0;
-      }
-    amsg.first = 1;
-    amsg.final = 1;
-    amsg.binary = 0;
-    amsg.len = len;
-    /* notice we over-allocate by LWS_PRE */
-    amsg.payload = malloc (LWS_PRE + len);
-    if (!amsg.payload)
-      {
-	  fprintf (stderr, "ws_write_client: cannot alloc for payload\n");
-#ifdef CHAR_DEBUG2
-	  fprintf (stderr, "e3");
-	  fflush (stderr);
-#endif
-	  lwsl_user ("OOM: dropping\n");
-	  return 0;
-      }
-    memset (amsg.payload, 0, LWS_PRE + len);
-
-    memcpy ((char *) amsg.payload + LWS_PRE, buf, len);
-
-    if (!lws_ring_insert (vhd->s_ring, &amsg, 1))
-      {
-	  fprintf (stderr, "ws_write_client: cannot insert into ring!\n");
-#ifdef CHAR_DEBUG2
-	  fprintf (stderr, "e4");
-	  fflush (stderr);
-#endif
-	  lwsl_user ("dropping!\n");
-	  __minimal_destroy_message (&amsg);
-	  return 0;
-      }
-
     /*
-     * let everybody know we want to write something on them
-     * as soon as they are ready
+     * Insert a separate message into all clients' rings, and
+     * notify them that there is something to be sent.
      */
-#ifdef CHAR_DEBUG2
-    int count = 0;
-#endif
+
     lws_start_foreach_llp (struct per_local_session_data__minimal **,
 			   ppss, vhd->pss_list)
     {
-#ifdef CHAR_DEBUG2
-	fprintf (stderr, "c%d", count++);
-	fflush (stderr);
-#endif
+	struct msg amsg;
+	amsg.first = 1;
+	amsg.final = 1;
+	amsg.binary = 0;
+	amsg.len = len;
+	amsg.payload = malloc (LWS_PRE + len);
+	if (!amsg.payload)
+	  {
+	      fprintf (stderr, "ws_write_client: cannot alloc for payload\n");
+	      lwsl_user ("OOM: dropping\n");
+	      return 0;
+	  }
+	memset (amsg.payload, 0, LWS_PRE + len);
+	memcpy ((char *) amsg.payload + LWS_PRE, buf, len);
+
+	int n = (int) lws_ring_get_count_free_elements ((*ppss)->client_ring);
+	if (!n)
+	  {
+	      lwsl_user ("No space on wring, dropping!\n");
+	  }
+	else
+	  {
+
+	      if (!lws_ring_insert ((*ppss)->client_ring, &amsg, 1))
+		{
+		    fprintf (stderr,
+			     "ws_write_client: cannot insert into ring!\n");
+		    lwsl_user ("dropping!\n");
+		    __minimal_destroy_message (&amsg);
+		    return 0;
+		}
+	  }
 	lws_callback_on_writable ((*ppss)->wsi);
-    } lws_end_foreach_llp (ppss, pss_list);
+    }
+    lws_end_foreach_llp (ppss, pss_list);
 
     return 1;
 }
