@@ -86,6 +86,26 @@ read_stdin (uv_stream_t * stream, ssize_t nread, const uv_buf_t * buf)
 }
 
 void
+idle_loop ()
+{
+    mqtt_loop ();
+}
+
+void
+timer_loop ()
+{
+    mqtt_loop ();
+}
+
+void
+process_mqtt (char *message)
+{
+    fprintf (stderr, "in callback: %s\n", message);
+    ws_write_cloud (message, strlen (message));
+    ws_write_client (message, strlen (message));
+}
+
+void
 process_buffer ()
 {
     char str[BUFSIZE], message[BUFSIZE], message_nosrc[BUFSIZE];
@@ -171,6 +191,15 @@ main (int argc, char **argv)
     uv_pipe_init (loop, &stdin_pipe, 0);
     uv_pipe_open (&stdin_pipe, 0);
     uv_read_start ((uv_stream_t *) & stdin_pipe, alloc_buffer, read_stdin);
+
+    /* MQTT stuff */
+    init_mqtt (&process_mqtt);
+    /*uv_idle_t idle_handle;
+       uv_idle_init (loop, &idle_handle); */
+    uv_timer_t timer_handle;
+    uv_timer_init (loop, &timer_handle);
+    uv_timer_start (&timer_handle, timer_loop, 5000, 100);
+    // uv_idle_start (&idle_handle, idle_loop);
     uv_run (loop, UV_RUN_DEFAULT);
     fprintf (stderr, "Out of loop!");
     /*
@@ -179,6 +208,9 @@ main (int argc, char **argv)
      * message); //ws_send(message); } time (&last_sync_state); }
      */
     ws_destroy ();
+
+    //uv_idle_stop (&idle_handle);
+    uv_timer_stop (&timer_handle);
     uv_loop_close (loop);
 }
 

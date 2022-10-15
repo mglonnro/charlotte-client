@@ -717,7 +717,6 @@ ws_write_client (char *buf, int len)
 
     if (get_connected_count (vhd->pss_list) == 0)
       {
-	  fprintf (stderr, "ws_write_client: no connected clients\n");
 	  clear_lws_ring (vhd, vhd->s_ring);
 	  return 0;
       }
