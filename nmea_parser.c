@@ -906,7 +906,24 @@ update_nmea_claim (cJSON * json, struct claim *arr)
 	  if (value)
 	    {
 		char unique_number[DLENGTH];
-		strcpy (unique_number, value->valuestring);
+
+		if (cJSON_IsNumber (value))
+		  {
+		      sprintf (unique_number, "%d", value->valueint);
+		  }
+		else if (cJSON_IsString (value))
+		  {
+		      strcpy (unique_number, value->valuestring);
+		  }
+		else
+		  {
+		      fprintf (stderr, "Claim with unknown unique number\n");
+		      char *p = cJSON_Print (fields);
+		      fprintf (stderr, "json: %s\n", p);
+		      free (p);
+		      return 0;
+		  }
+
 		int s = src->valueint;
 		//printf("Claim with unique number: %s\n", unique_number);
 		/* Delete old value if any ,return if already exists */
@@ -1127,8 +1144,8 @@ print_claim_state (struct claim_state *c)
     for (int i = 0; i < MAXDEVICES; i++)
       {
 	  fprintf (stderr, "Device #%d: unique %s\n", i,
-		   c->devices[i].unique_number[0] ? c->
-		   devices[i].unique_number : "NULL");
+		   c->devices[i].unique_number[0] ? c->devices[i].
+		   unique_number : "NULL");
       }
 }
 
