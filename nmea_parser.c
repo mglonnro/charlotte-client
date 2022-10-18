@@ -12,6 +12,7 @@
 #include "calibration.h"
 #include "truewind.h"
 #include "epoch.h"
+#include "mqtt.h"
 
 struct nmea_state state;
 struct nmea_sources sources;
@@ -482,6 +483,10 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 		fflush (stdout);
 	    }
       }
+    else if (pgn->valueint == 127251)
+      {
+	  update_nmea_value (json, newstate.rot, "Rate");
+      }
     else if (pgn->valueint == 60928)
       {
 	  update_nmea_claim (json, c_newstate.claims);
@@ -664,6 +669,7 @@ build_diff (struct nmea_state *old_state,
     changes += diff_values (ret, old_state->depth, new_state->depth, "depth");
     changes += diff_values (ret, old_state->pitch, new_state->pitch, "pitch");
     changes += diff_values (ret, old_state->roll, new_state->roll, "roll");
+    changes += diff_values (ret, old_state->rot, new_state->rot, "rot");
     changes +=
 	diff_claim_values (ret, c_old_state->claims,
 			   c_new_state->claims, "claims");

@@ -25,6 +25,7 @@ struct nmea_state {
         struct nmea_value depth[MAXSOURCES];
         struct nmea_value pitch[MAXSOURCES];
         struct nmea_value roll[MAXSOURCES];
+        struct nmea_value rot[MAXSOURCES];
 };
 
 #define DLENGTH 256
