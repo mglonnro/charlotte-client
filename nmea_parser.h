@@ -1,3 +1,5 @@
+#ifndef _NMEA_PARSER_H
+#define _NMEA_PARSER_H
 #include "cJSON.h"
 
 struct nmea_value {
@@ -101,3 +103,4 @@ get_state_value(struct nmea_value *arr, int src, double *ret);
 
 void
 get_rfc3339_now(char *buf);
+#endif

@@ -13,10 +13,13 @@
 #include "truewind.h"
 #include "epoch.h"
 #include "mqtt.h"
+#include "ais.h"
 
 struct nmea_state state;
 struct nmea_sources sources;
 struct claim_state c_state;
+
+struct ais_list *list;
 
 int debug_count = 0;
 int n2k_synctime = 0;
@@ -34,6 +37,13 @@ get_nmea_state (char *message)
     if (diff)
       {
 	  cJSON *nosrc = nmea_strip_sources (diff);
+
+	  /* Add AIS */
+	  cJSON *aisstate = get_ais_state (list);
+	  if (aisstate)
+	    {
+		cJSON_AddItemToObject (nosrc, "aisstate", aisstate);
+	    }
 
 	  /* Add current timestmap */
 	  char tbuf[31];
@@ -550,6 +560,9 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 	  if (aisvalues)
 	    {
 		cJSON_AddItemToObject (ais, key, aisvalues);
+
+		/* Also update our ais state */
+		list = add_or_update_ais (list, user_id, aisvalues);
 	    }
 	  free (v);
 	  cJSON_AddItemToObject (diff, "ais", ais);
