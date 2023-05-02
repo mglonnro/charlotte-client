@@ -88,13 +88,17 @@ read_stdin (uv_stream_t * stream, ssize_t nread, const uv_buf_t * buf)
 void
 idle_loop ()
 {
+#ifdef MQTT
     mqtt_loop ();
+#endif
 }
 
 void
 timer_loop ()
 {
+#ifdef MQTT
     mqtt_loop ();
+#endif
 }
 
 void
@@ -193,9 +197,10 @@ main (int argc, char **argv)
     uv_read_start ((uv_stream_t *) & stdin_pipe, alloc_buffer, read_stdin);
 
     /* MQTT stuff */
+#ifdef MQTT
     init_mqtt (&process_mqtt);
-    /*uv_idle_t idle_handle;
-       uv_idle_init (loop, &idle_handle); */
+#endif
+
     uv_timer_t timer_handle;
     uv_timer_init (loop, &timer_handle);
     uv_timer_start (&timer_handle, timer_loop, 5000, 100);

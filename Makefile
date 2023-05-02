@@ -2,11 +2,11 @@ PLATFORM=$(shell uname | tr '[A-Z]' '[a-z]')-$(shell uname -m)
 TARGETDIR=.
 TARGET=charlotte-client
 TARGETS=$(TARGET)
-OBJS=charlotte-client.o nmea_parser.o cJSON.o ws.o epoch.o config.o calibration.o nmea_creator.o truewind.o mqtt.o ais.o
+OBJS=charlotte-client.o nmea_parser.o cJSON.o ws.o epoch.o config.o calibration.o nmea_creator.o truewind.o ais.o #mqtt.o
 STATICLIBS=/usr/local/lib/libwebsockets.a /usr/local/lib/libcurl.a /usr/local/lib/libuv.a
-LDFLAGS=-lssl -lcrypto -lm -lmosquitto
+LDFLAGS=-lssl -lcrypto -lm #-lmosquitto
 VER=1.6
-CFLAGS=-g -Wall -ldl -lpthread -DVERSION=\"$(VER)\" #-DCHAR_DEBUG=1 #-DCHAR_DEBUG2=1 #-DCHAR_DEBUG=1
+CFLAGS=-g -Wall -ldl -lpthread -DVERSION=\"$(VER)\" #-DCHAR_DEBUG=1 #-DCHAR_DEBUG2=1 #-DCHAR_DEBUG=1 -DMQTT
 all: $(TARGET)
 
 $(TARGET): $(OBJS)

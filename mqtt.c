@@ -23,7 +23,8 @@ on_connect (struct mosquitto *mosq, void *obj, int reason_code)
      * appropriate string for MQTT v3.x clients, the equivalent for MQTT v5.0
      * clients is mosquitto_reason_string().
      */
-    printf ("on_connect: %s\n", mosquitto_connack_string (reason_code));
+    fprintf (stderr, "on_connect: %s\n",
+	     mosquitto_connack_string (reason_code));
     if (reason_code != 0)
       {
 	  /* If the connection fails for any reason, we don't want to keep on
@@ -75,7 +76,8 @@ on_subscribe (struct mosquitto *mosq, void *obj, int mid, int qos_count,
      * them all. */
     for (i = 0; i < qos_count; i++)
       {
-	  printf ("on_subscribe: %d:granted qos = %d\n", i, granted_qos[i]);
+	  fprintf (stderr, "on_subscribe: %d:granted qos = %d\n", i,
+		   granted_qos[i]);
 	  if (granted_qos[i] <= 2)
 	    {
 		have_subscription = true;
@@ -97,7 +99,8 @@ on_message (struct mosquitto *mosq, void *obj,
 	    const struct mosquitto_message *msg)
 {
     /* This blindly prints the payload, but the payload can be anything so take care. */
-    printf ("%s %d %s\n", msg->topic, msg->qos, (char *) msg->payload);
+    fprintf (stderr, "%s %d %s\n", msg->topic, msg->qos,
+	     (char *) msg->payload);
 
     /* We'll construct a JSON object here. */
     cJSON *root = cJSON_CreateObject ();

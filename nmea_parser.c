@@ -127,6 +127,52 @@ process_inbound_message (char *buf, int len)
 	  process_calib_state (s);
       }
 
+    s = cJSON_GetObjectItemCaseSensitive (json, "light");
+    if (s != NULL)
+      {
+	  char tbuf[31];
+	  memset (tbuf, 0, 31);
+	  getUTCTimestamp (tbuf);
+
+	  char buf[2048];
+	  memset (buf, 0, 2048);
+
+	  cJSON *state = cJSON_GetObjectItemCaseSensitive (s, "state");
+	  if (state != NULL)
+	    {
+		int on = cJSON_IsTrue (state);
+
+		make_light_onoff (buf, tbuf, on);
+		fprintf (stdout, "%s\n", buf);
+		fflush (stdout);
+	    }
+
+	  cJSON *r = cJSON_GetObjectItemCaseSensitive (s, "r");
+	  cJSON *g = cJSON_GetObjectItemCaseSensitive (s, "g");
+	  cJSON *b = cJSON_GetObjectItemCaseSensitive (s, "b");
+
+	  if (r != NULL && g != NULL && b != NULL)
+	    {
+		int red = r->valueint;
+		int green = g->valueint;
+		int blue = b->valueint;
+
+		make_light_color (buf, tbuf, red, green, blue);
+		fprintf (stdout, "%s\n", buf);
+		fflush (stdout);
+	    }
+
+	  cJSON *system_state =
+	      cJSON_GetObjectItemCaseSensitive (s, "system");
+	  if (system_state != NULL)
+	    {
+		int on = cJSON_IsTrue (system_state);
+		make_light_system_onoff (buf, tbuf, on);
+		fprintf (stdout, "%s\n", buf);
+		fflush (stdout);
+	    }
+      }
+
     cJSON_Delete (json);
     free (message);
     if (ret)
@@ -1157,8 +1203,8 @@ print_claim_state (struct claim_state *c)
     for (int i = 0; i < MAXDEVICES; i++)
       {
 	  fprintf (stderr, "Device #%d: unique %s\n", i,
-		   c->devices[i].unique_number[0] ? c->devices[i].
-		   unique_number : "NULL");
+		   c->devices[i].unique_number[0] ? c->
+		   devices[i].unique_number : "NULL");
       }
 }
 

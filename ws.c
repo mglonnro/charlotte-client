@@ -279,7 +279,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	  if (message[0])
 	    {
 		fprintf (stderr, "Sending state: %s\n", message);
-		ws_write_client (message, strlen (message) + 1);
+		ws_write_client (message, strlen (message));
 	    }
 	  else
 	    {
@@ -294,7 +294,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 
 		fprintf (stderr, "Sending config: %s\n", p);
 
-		ws_write_client (p, strlen (p) + 1);
+		ws_write_client (p, strlen (p));
 		free (p);
 	    }
 	  cJSON_Delete (config);
@@ -380,7 +380,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 	  /* Write processed reply if we have any */
 	  if (reply)
 	    {
-		ws_write_client (reply, strlen (reply) + 1);
+		ws_write_client (reply, strlen (reply));
 		free (reply);
 	    }
 	  break;

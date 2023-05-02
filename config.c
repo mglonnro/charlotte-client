@@ -122,35 +122,38 @@ process_cmd (cJSON * json)
 	  s = cJSON_GetObjectItemCaseSensitive (json, "key");
 	  cJSON *v = cJSON_GetObjectItemCaseSensitive (json, "value");
 
-	  int x;
-	  for (x = 0; x < MAXITEMS; x++)
+	  if (s && v)
 	    {
-		if (!c.items[x].key[0])
+		int x;
+		for (x = 0; x < MAXITEMS; x++)
 		  {
-		      break;
+		      if (!c.items[x].key[0])
+			{
+			    break;
+			}
+		      if (!strcmp (c.items[x].key, s->valuestring))
+			{
+			    found = 1;
+
+			    if (set)
+			      {
+				  strcpy (c.items[x].value, v->valuestring);
+			      }
+			    else
+			      {
+				  memset (c.items[x].value, 0, VALUELEN);
+			      }
+			}
 		  }
-		if (!strcmp (c.items[x].key, s->valuestring))
+
+		if (!found && set)
 		  {
-		      found = 1;
-
-		      if (set)
-			{
-			    strcpy (c.items[x].value, v->valuestring);
-			}
-		      else
-			{
-			    memset (c.items[x].value, 0, VALUELEN);
-			}
+		      strcpy (c.items[x].key, s->valuestring);
+		      strcpy (c.items[x].value, v->valuestring);
 		  }
-	    }
 
-	  if (!found && set)
-	    {
-		strcpy (c.items[x].key, s->valuestring);
-		strcpy (c.items[x].value, v->valuestring);
+		c.time = getMillisecondsSinceEpoch ();
+		save_config ();
 	    }
-
-	  c.time = getMillisecondsSinceEpoch ();
-	  save_config ();
       }
 }
