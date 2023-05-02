@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <sys/time.h>
+#include "epoch.h"
 
 unsigned long
 getMillisecondsSinceEpoch ()
@@ -21,7 +22,6 @@ getMillisecondsSinceEpoch ()
 int
 getUTCTimestamp (char buf[])
 {
-    const int bufsize = 31;
     const int tmpsize = 21;
     struct timespec now;
     struct tm tm;

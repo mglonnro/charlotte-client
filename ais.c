@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "ais.h"
 #include "cJSON.h"
+#include "epoch.h"
 
 struct ais_list *
 create_ais_list ()
@@ -159,6 +160,7 @@ get_ais_state (struct ais_list *root)
     return state;
 }
 
+void
 update_ais_value (cJSON * fields, char *field_name, void *dest)
 {
     cJSON *value = cJSON_GetObjectItemCaseSensitive (fields, field_name);

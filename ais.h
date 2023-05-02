@@ -24,4 +24,10 @@ struct ais_list * create_ais_list() ;
 void destroy_ais_list(struct ais_list *root);
 cJSON *get_ais_state(struct ais_list *root);
 
+void
+update_ais_value (cJSON * fields, char *field_name, void *dest);
+
+struct ais_list *
+add_or_update_ais (struct ais_list *root, int user_id, cJSON * values);
+
 #endif

@@ -5,7 +5,7 @@
 #include "epoch.h"
 
 #define SAVEFILE "config.state"
-struct config c;
+static struct config c;
 
 void
 init_config ()

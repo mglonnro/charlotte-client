@@ -353,7 +353,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
 		lwsl_err ("ERROR %d writing to ws socket\n", m);
 		lws_ring_consume_single_tail (pss->client_ring, &pss->tail,
 					      1);
-		fprintf (stderr, "OUT.b SERVER_WRITEABLE %d\n",
+		fprintf (stderr, "OUT.b SERVER_WRITEABLE %ld\n",
 			 lws_ring_get_count_waiting_elements
 			 (pss->client_ring, &pss->tail));
 		return -1;
@@ -425,7 +425,7 @@ callback_minimal (struct lws *wsi, enum lws_callback_reasons reason,
       case LWS_CALLBACK_CLIENT_RECEIVE:
 	  if (strlen (receive_message) + len + 1 > CLIENT_MSG_BUFFER)
 	    {
-		fprintf (stderr, "buffer overrun, dropping %d bytes\n", len);
+		fprintf (stderr, "buffer overrun, dropping %ld bytes\n", len);
 	    }
 	  else
 	    {

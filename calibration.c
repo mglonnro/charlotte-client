@@ -6,7 +6,7 @@
 #include "epoch.h"
 
 #define SAVEFILE "calibration.state"
-struct calib c;
+static struct calib c;
 
 void
 init_calib ()

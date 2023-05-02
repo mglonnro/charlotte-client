@@ -423,12 +423,10 @@ parse_nmea (char *line, char *message, char *message_nosrc)
 
 	  if (0 && !is_field_value_null (json, "Speed Water Referenced"))
 	    {
-		double speed =
-		    get_field_value_double (json, "Speed Water Referenced");
-		double c_speed = get_calib ("speed", speed);
-		cJSON *time =
-		    cJSON_GetObjectItemCaseSensitive (json, "timestamp");
-		char buf[2048];
+		//double speed = get_field_value_double (json, "Speed Water Referenced");
+		// double c_speed = get_calib ("speed", speed);
+		// cJSON *time = cJSON_GetObjectItemCaseSensitive (json, "timestamp");
+		// char buf[2048];
 		// make_nmea_speed_sentence (buf, time->valuestring, c_speed);
 		/* fprintf (stderr, "%f => %f\n", speed, c_speed); */
 		// printf ("%s\n", buf);
